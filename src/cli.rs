@@ -28,6 +28,8 @@ pub struct Cli {
 pub enum Command {
     /// Lint ADR files and the directory that holds them
     Lint(LintArgs),
+    /// Format ADR files with rumdl
+    Format(FormatArgs),
     /// Write a starter configuration and ADR directory
     Init(InitArgs),
     /// Create the next sequential ADR
@@ -47,6 +49,17 @@ pub struct LintArgs {
     /// Output format
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
     pub format: OutputFormat,
+}
+
+#[derive(Debug, Args)]
+pub struct FormatArgs {
+    /// Files or directories to format; defaults to the configured ADR directory
+    #[arg(value_name = "PATH")]
+    pub paths: Vec<PathBuf>,
+
+    /// Report files that would change without writing them
+    #[arg(long)]
+    pub check: bool,
 }
 
 #[derive(Debug, Args)]

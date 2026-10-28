@@ -34,6 +34,8 @@ jiff = "0.2"
 owo-colors = "4"
 # The Markdown parse is owned by `adr::parse`; no other module may parse the source.
 pulldown-cmark = { version = "0.13", default-features = false }
+# rumdl is linked in-process; its `native` feature pulls the LSP/tokio stack and is not needed.
+rumdl = { version = "0.3.2", default-features = false }
 saphyr = { version = "0.3", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

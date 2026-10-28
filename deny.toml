@@ -20,3 +20,11 @@ confidence-threshold = 0.8
 # Per-crate exceptions for copyleft licenses. These crates are file-scoped
 # exceptions; nothing else may use these licenses.
 exceptions = [{ allow = ["MPL-2.0"], crate = "option-ext" }, { allow = ["LGPL-2.1-or-later"], crate = "r-efi" }]
+
+[advisories]
+# rumdl reads `.markdownlint.yaml` through serde_yaml, which is built on the archived
+# unsafe-libyaml. The advisory is informational — the crate is unmaintained, not known
+# vulnerable — and adrlint never parses YAML through it: the front matter parse is
+# saphyr, and this path is only reachable from a rumdl configuration file that adrlint
+# does not load. Drop this ignore when rumdl moves off serde_yaml.
+ignore = ["RUSTSEC-2024-0449"]

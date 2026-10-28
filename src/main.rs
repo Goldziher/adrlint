@@ -8,10 +8,10 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 
 use adrlint::adr::{self, Document};
-use adrlint::cli::{Cli, Command, InitArgs, LintArgs, LockArgs, NewArgs, UnlockArgs};
+use adrlint::cli::{Cli, Command, FormatArgs, InitArgs, LintArgs, LockArgs, NewArgs, UnlockArgs};
 use adrlint::lock::{self, LockFile};
 use adrlint::report::OutputFormat;
-use adrlint::{config, diagnostics, discovery, report, rules, template};
+use adrlint::{config, diagnostics, discovery, markdown, report, rules, template};
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -33,6 +33,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
     let config = config.as_deref();
     match command {
         Command::Lint(args) => lint(config, args, !no_color),
+        Command::Format(args) => format_command(config, args),
         Command::Init(args) => init(config, args),
         Command::New(args) => new(config, args),
         Command::Lock(args) => lock_command(config, args),
@@ -52,6 +53,46 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
     }
 }
 
+/// Formats every ADR reachable from `paths`, writing only the files that change.
+///
+/// `--check` is the CI form: nothing is written, and a file that would change makes the command exit
+/// `1` so the run fails the build rather than the diff.
+fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCode> {
+    let loaded = config::load(config_path)?;
+    let directories = resolve_directories(&args.paths, &loaded)?;
+    let mut changed = Vec::new();
+
+    for directory in directories {
+        let scanned =
+            discovery::scan(&directory).with_context(|| format!("reading ADR directory {}", directory.display()))?;
+        for file in &scanned.adrs {
+            let source =
+                fs::read_to_string(&file.path).with_context(|| format!("reading ADR {}", file.path.display()))?;
+            let formatted = markdown::format(&source, &file.path, &loaded.config.markdown)?;
+            if formatted == source {
+                continue;
+            }
+            if !args.check {
+                fs::write(&file.path, &formatted).with_context(|| format!("writing {}", file.path.display()))?;
+            }
+            changed.push(file.path.clone());
+        }
+    }
+
+    for path in &changed {
+        if args.check {
+            println!("would reformat {}", path.display());
+        } else {
+            println!("reformatted {}", path.display());
+        }
+    }
+
+    if args.check && !changed.is_empty() {
+        return Ok(ExitCode::from(1));
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 type LintResult = (Vec<diagnostics::Diagnostic>, Vec<(PathBuf, Document)>);
 
 /// Lints every ADR reachable from `paths`, returning the findings and the parsed documents.
@@ -69,6 +110,7 @@ fn collect(loaded: &config::Loaded, paths: &[PathBuf], check_lock: bool) -> Resu
                 fs::read_to_string(&file.path).with_context(|| format!("reading ADR {}", file.path.display()))?;
             let document = adr::parse(&source);
             findings.extend(rules::check_document(&document, &file.path, &loaded.root));
+            findings.extend(markdown::check(&source, &file.path, &loaded.config.markdown));
             documents.push((file.path.clone(), document));
         }
     }

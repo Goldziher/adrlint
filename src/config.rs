@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -13,6 +14,8 @@ pub struct Config {
     pub adr: AdrConfig,
     #[serde(default)]
     pub lock: LockConfig,
+    #[serde(default)]
+    pub markdown: MarkdownConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -82,6 +85,68 @@ fn default_start() -> u32 {
     1
 }
 
+/// rumdl's Markdown layer.
+///
+/// `rules` holds per-rule settings (`off`, `warn`, `error`) keyed by rumdl's own `MD###` code. The
+/// defaults are applied when the table is parsed and merged under whatever the user wrote, so
+/// naming one rule never silently re-enables the opinionated defaults.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarkdownConfig {
+    #[serde(default = "default_markdown_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_markdown_rules")]
+    pub rules: BTreeMap<String, String>,
+}
+
+impl Default for MarkdownConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_markdown_enabled(),
+            rules: default_markdown_rules(),
+        }
+    }
+}
+
+impl MarkdownConfig {
+    /// Fills in the opinionated defaults without overriding anything the user set.
+    ///
+    /// Rule codes are matched case-insensitively, so a lower-case `md009` in the configuration turns
+    /// the same rule off instead of silently doing nothing.
+    fn with_defaults(mut self) -> Self {
+        let mut rules = default_markdown_rules();
+        for (code, setting) in std::mem::take(&mut self.rules) {
+            rules.insert(code.trim().to_ascii_uppercase(), setting);
+        }
+        self.rules = rules;
+        self
+    }
+
+    /// The configured setting for a rule, if any.
+    pub fn setting(&self, code: &str) -> Option<&str> {
+        self.rules.get(code).map(|setting| setting.trim())
+    }
+
+    /// Whether the rule is turned off. `off` removes the finding and its fix.
+    pub fn is_off(&self, code: &str) -> bool {
+        self.setting(code)
+            .is_some_and(|setting| setting.eq_ignore_ascii_case("off"))
+    }
+}
+
+fn default_markdown_enabled() -> bool {
+    true
+}
+
+fn default_markdown_rules() -> BTreeMap<String, String> {
+    BTreeMap::from([
+        // ADR prose is reflowed by its authors, so a fixed line length fights the template.
+        ("MD013".to_owned(), "off".to_owned()),
+        // Decision records legitimately embed HTML tables and other inline markup.
+        ("MD033".to_owned(), "off".to_owned()),
+    ])
+}
+
 #[derive(Debug)]
 pub struct Loaded {
     pub config: Config,
@@ -134,8 +199,9 @@ fn absolute(path: PathBuf) -> PathBuf {
 fn read(path: &Path) -> Result<Config> {
     let contents =
         fs::read_to_string(path).with_context(|| format!("reading configuration from {}", path.display()))?;
-    let config: Config =
+    let mut config: Config =
         toml::from_str(&contents).with_context(|| format!("parsing configuration from {}", path.display()))?;
+    config.markdown = config.markdown.with_defaults();
     validate(&config).with_context(|| format!("invalid configuration in {}", path.display()))?;
     Ok(config)
 }
@@ -149,7 +215,17 @@ fn validate(config: &Config) -> Result<()> {
     if config.lock.statuses.iter().any(|status| status.trim().is_empty()) {
         bail!("lock.statuses must not contain empty values");
     }
+    for (code, setting) in &config.markdown.rules {
+        let setting = setting.trim();
+        if !matches_ignore_ascii_case(setting, &["off", "warn", "error"]) {
+            bail!("markdown.rules.{code} must be one of off, warn or error, found {setting:?}");
+        }
+    }
     Ok(())
+}
+
+fn matches_ignore_ascii_case(value: &str, candidates: &[&str]) -> bool {
+    candidates.iter().any(|candidate| value.eq_ignore_ascii_case(candidate))
 }
 
 pub fn validate_dir(dir: &Path) -> Result<()> {
@@ -190,6 +266,16 @@ allow_gaps = false
 enabled = true
 path = "adrlint.lock"
 statuses = ["accepted", "rejected"]
+
+# rumdl's Markdown rules run over the same source as the MADR rules.
+[markdown]
+enabled = true
+
+[markdown.rules]
+# ADR prose is reflowed by its authors, so a fixed line length is not enforced.
+MD013 = "off"
+# Decision records legitimately embed HTML tables and other inline markup.
+MD033 = "off"
 "#,
         dir, start
     )
@@ -236,5 +322,57 @@ mod tests {
         };
         let error = validate(&config).unwrap_err().to_string();
         assert!(error.contains("must be relative"));
+    }
+
+    #[test]
+    fn should_default_to_disabling_line_length_and_inline_html() {
+        let markdown = MarkdownConfig::default();
+        assert!(markdown.enabled);
+        assert!(markdown.is_off("MD013"));
+        assert!(markdown.is_off("MD033"));
+        assert!(!markdown.is_off("MD009"));
+    }
+
+    #[test]
+    fn should_keep_the_defaults_when_only_one_rule_is_configured() {
+        let parsed: Config = toml::from_str("[markdown.rules]\nMD009 = \"off\"\n").unwrap();
+        let markdown = parsed.markdown.with_defaults();
+        assert_eq!(markdown.setting("MD009"), Some("off"));
+        assert_eq!(markdown.setting("MD013"), Some("off"));
+        assert_eq!(markdown.setting("MD033"), Some("off"));
+    }
+
+    #[test]
+    fn should_let_an_explicit_setting_override_a_default() {
+        let parsed: Config = toml::from_str("[markdown.rules]\nMD013 = \"error\"\n").unwrap();
+        let markdown = parsed.markdown.with_defaults();
+        assert_eq!(markdown.setting("MD013"), Some("error"));
+        assert!(!markdown.is_off("MD013"));
+    }
+
+    #[test]
+    fn should_match_rule_codes_case_insensitively() {
+        let parsed: Config = toml::from_str("[markdown.rules]\nmd009 = \"off\"\n").unwrap();
+        let markdown = parsed.markdown.with_defaults();
+        assert!(markdown.is_off("MD009"));
+    }
+
+    #[test]
+    fn should_reject_an_unknown_markdown_severity() {
+        let mut config = Config::default();
+        config.markdown.rules.insert("MD009".to_owned(), "maybe".to_owned());
+        let error = validate(&config).unwrap_err().to_string();
+        assert!(error.contains("markdown.rules.MD009 must be one of off, warn or error"));
+    }
+
+    #[test]
+    fn should_render_the_markdown_table() {
+        let rendered = render(Path::new("docs/adr"), 1);
+        assert!(rendered.contains("[markdown]"));
+        assert!(rendered.contains("MD013 = \"off\""));
+        assert!(rendered.contains("MD033 = \"off\""));
+        let parsed: Config = toml::from_str(&rendered).unwrap();
+        assert!(parsed.markdown.enabled);
+        assert!(parsed.markdown.is_off("MD013"));
     }
 }
