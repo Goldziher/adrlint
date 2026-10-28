@@ -1,0 +1,205 @@
+# ai-rulez.lock: pins remote includes, installed skills and authored content. Commit this file.
+# Refresh it with `ai-rulez lock`; `ai-rulez generate --locked` fails when it is stale.
+
+version = 1
+ai_rulez_version = '5.9.2'
+scope = 'all'
+tree = 'sha256:fce8b50161beec7c74d0000a6e696077fc402e20c9c3c02d8a5d3d912bf4e678'
+
+[[served]]
+name = 'build'
+source = ''
+commit = ''
+digest = 'sha256:9cceec2f19f019ee88fb468a58d753dc30e5869bace37c712dff6c59c0ecb87a'
+
+[[served]]
+name = 'code-quality-standards'
+source = 'builtin://universal/code-quality/skills/code-quality-standards/SKILL.md'
+commit = ''
+digest = 'sha256:fbb459dca3be6c91a4fe1944e844728c53e8856b517c5b122b8b2aeac566f666'
+
+[[served]]
+name = 'config-placement'
+source = 'builtin://universal/ai-governance/skills/config-placement/SKILL.md'
+commit = ''
+digest = 'sha256:31adedeec2e2f4e7e0cc802f32467ad38d6db4034df698dac1ee9b52b747fd00'
+
+[[served]]
+name = 'dependency-awareness'
+source = 'builtin://universal/security/skills/dependency-awareness/SKILL.md'
+commit = ''
+digest = 'sha256:8f41215233c26441abed2b18f35575ce6b5614f91d9bef4885d550322542d4a5'
+
+[[served]]
+name = 'error-handling'
+source = 'builtin://universal/code-quality/skills/error-handling/SKILL.md'
+commit = ''
+digest = 'sha256:fbc7d452c7171e71341578b6c7a56fc2c87031c0ce15d35884bc3260e04ff68a'
+
+[[served]]
+name = 'fix'
+source = ''
+commit = ''
+digest = 'sha256:c652634fd926d8b98b7379a24953a6feaa23949a09d6c104be9fecdcaccc8135'
+
+[[served]]
+name = 'incremental-approach'
+source = 'builtin://universal/token-efficiency/skills/incremental-approach/SKILL.md'
+commit = ''
+digest = 'sha256:b31111df0d7c3427e8ef3257fedeea76bc2430e4e132e7c986ab39d7c9b0d9c6'
+
+[[served]]
+name = 'iterate'
+source = ''
+commit = ''
+digest = 'sha256:5cb87728d1449fadda6d8557501fcc0823509c60a37058ce4d2dda123296f67c'
+
+[[served]]
+name = 'lint'
+source = ''
+commit = ''
+digest = 'sha256:83532fc4ac2df018574114a19553c59b8af5ca708e592a26edc036689bea6eb5'
+
+[[served]]
+name = 'owasp-quick-reference'
+source = 'builtin://universal/security/skills/owasp-quick-reference/SKILL.md'
+commit = ''
+digest = 'sha256:195755e5e5628857b680bb0b0453c909f258a0c36ce3f1b8e1d746c7ea54bffc'
+
+[[served]]
+name = 'parallelize'
+source = ''
+commit = ''
+digest = 'sha256:2700d984ba10baa2e16ed19b48cc8fd5f7351776f2ce03f6712394d3912f91cb'
+
+[[served]]
+name = 'review'
+source = ''
+commit = ''
+digest = 'sha256:62894b9b7d3aeb625624d39fe7a6871ac988f568fa3fdfc18da877ed6abc8f84'
+
+[[served]]
+name = 'rust-conventions'
+source = 'builtin://languages/rust/skills/rust-conventions/SKILL.md'
+commit = ''
+digest = 'sha256:dabcff852805a54326738de59f6a5bd6aa77092aefbfc3f67586dd762a1fcdb0'
+
+[[served]]
+name = 'skill-authoring'
+source = 'builtin://universal/ai-governance/skills/skill-authoring/SKILL.md'
+commit = ''
+digest = 'sha256:7ab2b543dc6608f204c957fedfc55ae902d22fda9dc8a52252330ff9b1406ff1'
+
+[[served]]
+name = 'task-runner'
+source = 'builtin://universal/token-efficiency/skills/task-runner/SKILL.md'
+commit = ''
+digest = 'sha256:c57056e3a74a261b3a9d47638726c7d1f64c76b255838b6aaa3e635f3ffa8618'
+
+[[served]]
+name = 'tdd-workflow'
+source = 'builtin://universal/testing/skills/tdd-workflow/SKILL.md'
+commit = ''
+digest = 'sha256:6086fe4a492fd695490fc26dc917bf8af08046a695a4eba5dc8dbbd1f71bd852'
+
+[[served]]
+name = 'test'
+source = ''
+commit = ''
+digest = 'sha256:c0fcc8937a6d1c4d4260c3cfa0aeee1befabcb215fb050edfa64d8f45feb5024'
+
+[[served]]
+name = 'testing-conventions'
+source = 'builtin://universal/testing/skills/testing-conventions/SKILL.md'
+commit = ''
+digest = 'sha256:f406604437e2998fc756a0a5b6a08cd832b871c188f76ee5ecbfef33184e9652'
+
+[[item]]
+kind = 'command'
+id = 'build'
+path = 'commands/build.md'
+digest = 'sha256:ec4d5c3ed83ae2c53d7149b691621181937e6f88cb62a9efe076ece9582130fd'
+
+[[item]]
+kind = 'command'
+id = 'fix'
+path = 'commands/fix.md'
+digest = 'sha256:4896babd70d7dcc5c784db267b86e85263ef165da9a04b13aed61bbb8489e3fd'
+
+[[item]]
+kind = 'command'
+id = 'lint'
+path = 'commands/lint.md'
+digest = 'sha256:3c76097e7c9186b98a2b6693570a9e3fac32afc3f7c1e0af9f49a8e59330d8c7'
+
+[[item]]
+kind = 'command'
+id = 'review'
+path = 'commands/review.md'
+digest = 'sha256:afbbf8c89c74768f6b90cf357eff37fda41eaed735bec52cba578b988a525add'
+
+[[item]]
+kind = 'command'
+id = 'test'
+path = 'commands/test.md'
+digest = 'sha256:6e41ae4ac949913d19fe0a5d21b4a43a99223bfb1377c82ab2011c06332d6bb5'
+
+[[item]]
+kind = 'context'
+id = 'architecture'
+path = 'context/architecture.md'
+digest = 'sha256:e99ba328b45ebaf399eff43622a22982944715d233794dc4c555011f3e7c7bfa'
+
+[[item]]
+kind = 'context'
+id = 'development-setup'
+path = 'context/development-setup.md'
+digest = 'sha256:375729c51be73fc894785033d604e030564c44e9d3fc1814f7c1f1b8fe1fe6e7'
+
+[[item]]
+kind = 'context'
+id = 'madr-model'
+path = 'context/madr-model.md'
+digest = 'sha256:5a2a815f54f4f0e509105d48f5acf5c288efcd12d756620ad0fa554497025228'
+
+[[item]]
+kind = 'context'
+id = 'poly'
+path = 'context/poly.md'
+digest = 'sha256:c78115a5173a18ebceae477cb22e7f0b05e90298c29932a85a6c4c215ddb71e2'
+
+[[item]]
+kind = 'rule'
+id = 'configuration-system'
+path = 'rules/configuration-system.md'
+digest = 'sha256:d6bd62b302bdaac8076bbb7712aba3c1ba2b1548ac7de21c45c6301ea79881f4'
+
+[[item]]
+kind = 'rule'
+id = 'cross-platform-distribution'
+path = 'rules/cross-platform-distribution.md'
+digest = 'sha256:6a012073119fa801150a2132d5e9ecd25a0a285d6f256b0b765218c7059a7542'
+
+[[item]]
+kind = 'rule'
+id = 'immutability-locking'
+path = 'rules/immutability-locking.md'
+digest = 'sha256:cb9a48e387b28c364972c41d711e21cd2e369bdca23ceb35a663c4e30f68c832'
+
+[[item]]
+kind = 'rule'
+id = 'markdown-pipeline'
+path = 'rules/markdown-pipeline.md'
+digest = 'sha256:2717bdbdce6e7aa544f724878c2bb93fa18b63dd47c8c57d00ff506cd0b1695b'
+
+[[item]]
+kind = 'rule'
+id = 'sequentiality-numbering'
+path = 'rules/sequentiality-numbering.md'
+digest = 'sha256:87adb45bb10db20e1799f09d67e5e1bba95a686e82aa0cf96e190e921e709736'
+
+[[item]]
+kind = 'rule'
+id = 'version-synchronization'
+path = 'rules/version-synchronization.md'
+digest = 'sha256:8cbc7a7c0f94c55bbab408da6e7d4bfd281951d6c848ea32e83287b4d36f30af'

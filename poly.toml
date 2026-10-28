@@ -1,0 +1,82 @@
+[defaults]
+line_length = 120
+line_ending = "lf"
+final_newline = true
+trim_trailing_whitespace = true
+
+[discovery]
+exclude = [
+  ".ai-rulez/index.md",
+  ".ai-rulez/commands/index.md",
+  ".ai-rulez/context/index.md",
+  ".ai-rulez/rules/index.md",
+  ".ai-rulez/.generated-manifest.json",
+  ".ai-rulez/ai-rulez.lock",
+  "**/*.lock",
+  "**/*.svg",
+  "**/Cargo.lock",
+  "**/pnpm-lock.yaml",
+  "fixtures/**",
+  "node_modules/**",
+  "npm-package/**",
+  "pip-package/**",
+  "target/**",
+]
+
+[lint.typos]
+extend_words = { adr = "ADR", adrlint = "adrlint", madr = "MADR", rumdl = "rumdl" }
+
+[lint.markdown.rumdl]
+disable = ["MD025", "MD033", "MD041"]
+
+[hooks]
+stages = ["pre-commit"]
+
+[hooks.builtin]
+lint = { exclude = [
+  "**/*.lock",
+  "**/*.svg",
+  "**/Cargo.lock",
+  "**/pnpm-lock.yaml",
+  "fixtures/**",
+  "node_modules/**",
+  "npm-package/**",
+  "pip-package/**",
+  "target/**",
+] }
+fmt = { exclude = [
+  "**/*.lock",
+  "**/*.svg",
+  "**/Cargo.lock",
+  "**/pnpm-lock.yaml",
+  "fixtures/**",
+  "node_modules/**",
+  "npm-package/**",
+  "pip-package/**",
+  "target/**",
+] }
+commit = { stages = ["commit-msg"] }
+file_safety = { exclude = [
+  "**/*.lock",
+  "**/*.svg",
+  "**/Cargo.lock",
+  "**/pnpm-lock.yaml",
+  "fixtures/**",
+  "node_modules/**",
+  "npm-package/**",
+  "pip-package/**",
+  "target/**",
+] }
+cargo = true
+
+[tools.shfmt]
+enabled = true
+
+[tools.actionlint]
+enabled = true
+
+[[hooks.sources]]
+id = "ai-rulez"
+git = "https://github.com/Goldziher/ai-rulez.git"
+revision = "5e0bb9e03377f781ecbeac4110ffeac731d0ceef"
+hooks = ["ai-rulez-validate"]
