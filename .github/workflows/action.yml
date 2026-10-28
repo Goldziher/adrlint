@@ -29,8 +29,29 @@ env:
   ADRLINT_ACTION_TEST_VERSION: "0.1.0"
 
 jobs:
+  release:
+    name: Check release availability
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      - name: Check whether the pinned release exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "v${ADRLINT_ACTION_TEST_VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "v${ADRLINT_ACTION_TEST_VERSION} is not published yet; skipping the action test."
+          fi
+
   test:
     name: Test (${{ matrix.os }})
+    needs: release
+    if: needs.release.outputs.available == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
