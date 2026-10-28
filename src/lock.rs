@@ -449,9 +449,10 @@ fn write_block(writer: &mut Canonical, block: &crate::adr::Block) {
             writer.flag("ordered", *ordered);
             writer.number("depth", *depth as u64);
         }
-        Block::CodeBlock { language, text, .. } => {
+        Block::CodeBlock { text, .. } => {
+            // The info string is a rendering hint, like a fence style: rumdl's MD040 may add it, and
+            // that must not turn a formatter run into a content edit. The body is content.
             writer.tag("code-block");
-            writer.text("language", language);
             writer.text("code", text);
         }
         Block::Table { header, rows, .. } => {
@@ -546,6 +547,11 @@ mod tests {
             hash("---\ntitle: ok\n  bad: indent\n---\n# T\n"),
             hash("---\ntitle: ok\n  worse: indent\n---\n# T\n")
         );
+    }
+
+    #[test]
+    fn should_ignore_a_code_block_language() {
+        assert_eq!(hash("```rust\nlet a = 1;\n```\n"), hash("```text\nlet a = 1;\n```\n"));
     }
 
     #[test]

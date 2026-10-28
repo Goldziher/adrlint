@@ -66,7 +66,16 @@ fn should_lock_accepted_adrs_and_detect_content_changes() {
         "formatting only must not break the lock: {linted}"
     );
 
-    fs::write(&adr, reformatted.replace("two or three", "three or four")).unwrap();
+    let output = run(adrlint().current_dir(directory.path()).arg("format"));
+    assert!(output.status.success(), "{}", stderr(&output));
+    let output = run(adrlint().current_dir(directory.path()).arg("lint"));
+    assert!(
+        output.status.success(),
+        "formatting back to '*' must leave the lock intact: {}",
+        stdout(&output)
+    );
+
+    fs::write(&adr, original.replace("two or three", "three or four")).unwrap();
     let output = run(adrlint().current_dir(directory.path()).arg("lint"));
     assert_eq!(output.status.code(), Some(1));
     assert!(stdout(&output).contains("[ADR50]"), "{}", stdout(&output));
