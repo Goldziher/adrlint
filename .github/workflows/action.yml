@@ -1,0 +1,98 @@
+name: Action
+
+# Exercises action.yml itself (uses: ./) rather than the CLI. Pinned to the last published
+# release; bump this when a release is cut.
+on:
+  pull_request:
+    paths:
+      - "action.yml"
+      - "problem-matcher.json"
+      - "scripts/gh-action-*.sh"
+      - ".github/workflows/action.yml"
+  push:
+    branches: [main]
+    paths:
+      - "action.yml"
+      - "problem-matcher.json"
+      - "scripts/gh-action-*.sh"
+      - ".github/workflows/action.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ADRLINT_ACTION_TEST_VERSION: "0.1.0"
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest, ubuntu-24.04-arm]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Write fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/clean tmp/violate
+          printf '[adr]\ndir = "tmp/clean"\n' > .adrlint.toml
+          printf '# A clean record\n\n## Context and Problem Statement\n\nContext.\n\n## Considered Options\n\n* One\n\n## Decision Outcome\n\nChosen option: "One", because it exists.\n' > tmp/clean/0001-clean.md
+          printf '# Starts too high\n\n## Context and Problem Statement\n\nContext.\n\n## Considered Options\n\n* One\n\n## Decision Outcome\n\nChosen option: "One", because it exists.\n' > tmp/violate/0003-high.md
+
+      - name: Install only
+        id: install-only
+        uses: ./
+        with:
+          version: ${{ env.ADRLINT_ACTION_TEST_VERSION }}
+          install-only: "true"
+
+      - name: Assert install-only installed the pinned version and ran nothing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.install-only.outputs.version }}" != "$ADRLINT_ACTION_TEST_VERSION" ]; then
+            echo "::error::expected output version $ADRLINT_ACTION_TEST_VERSION, got '${{ steps.install-only.outputs.version }}'"
+            exit 1
+          fi
+          got="$(adrlint --version)"
+          case "$got" in
+            *"$ADRLINT_ACTION_TEST_VERSION"*) ;;
+            *)
+              echo "::error::expected adrlint --version to mention $ADRLINT_ACTION_TEST_VERSION, got: $got"
+              exit 1
+              ;;
+          esac
+
+      - name: Lint a clean fixture (expected to pass)
+        uses: ./
+        with:
+          version: ${{ env.ADRLINT_ACTION_TEST_VERSION }}
+          args: "lint tmp/clean"
+
+      - name: Lint a violating fixture (expected to fail)
+        id: lint-violation
+        continue-on-error: true
+        uses: ./
+        with:
+          version: ${{ env.ADRLINT_ACTION_TEST_VERSION }}
+          args: "lint tmp/violate"
+
+      - name: Assert the violating fixture failed the gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.lint-violation.outcome }}" != "failure" ]; then
+            echo "::error::expected the lint step against tmp/violate to fail, got '${{ steps.lint-violation.outcome }}'"
+            exit 1
+          fi
+          echo "Confirmed: the violating fixture failed the gate as expected."

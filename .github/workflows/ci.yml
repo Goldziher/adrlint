@@ -1,0 +1,102 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    uses: xberg-io/actions/.github/workflows/reusable-validate.yml@v1.24.1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      setup-rust: true
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Check formatting
+        run: cargo fmt --check
+      - uses: Swatinem/rust-cache@v2
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    env:
+      # Keep in step with package.rust-version in Cargo.toml.
+      MSRV: "1.94"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.MSRV }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      - name: Check declared rust-version matches this job
+        run: |
+          set -euo pipefail
+          declared="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].rust_version')"
+          if [ "$declared" != "$MSRV" ]; then
+            echo "::error::Cargo.toml rust-version is $declared but this job pins $MSRV"
+            exit 1
+          fi
+      - name: Build on the MSRV toolchain
+        run: cargo check --all-targets
+
+  deny:
+    name: Licenses and advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans licenses sources
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The tool rewrites ADR files and hashes them, so path and line-ending handling
+        # has to be exercised on Windows and macOS, not only Linux.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run tests
+        run: cargo test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release
+      - name: Verify the publishable crate
+        run: cargo package --locked
