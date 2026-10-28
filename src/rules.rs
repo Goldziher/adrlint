@@ -16,6 +16,45 @@ pub use metadata::check_metadata;
 pub use structure::check_structure;
 pub use style::check_style;
 
+/// Applies `[rules]` severities to the collected findings.
+///
+/// A key matches a finding when it is a prefix of the code, ignoring case; the longest matching key
+/// wins, so `MADR03 = "warn"` covers `MADR03a` and `MADR03b` while an explicit `MADR03b = "off"`
+/// still removes only that variant.
+pub fn apply_overrides(findings: &mut Vec<Diagnostic>, rules: &BTreeMap<String, String>) {
+    if rules.is_empty() {
+        return;
+    }
+    findings.retain_mut(|diagnostic| {
+        let Some(setting) = longest_rule_setting(rules, diagnostic.code) else {
+            return true;
+        };
+        match setting.trim().to_ascii_lowercase().as_str() {
+            "off" => false,
+            "warn" => {
+                diagnostic.severity = crate::diagnostics::Severity::Warning;
+                true
+            }
+            "error" => {
+                diagnostic.severity = crate::diagnostics::Severity::Error;
+                true
+            }
+            _ => true,
+        }
+    });
+}
+
+fn longest_rule_setting<'a>(rules: &'a BTreeMap<String, String>, code: &str) -> Option<&'a String> {
+    rules
+        .iter()
+        .filter(|(prefix, _)| {
+            code.get(..prefix.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+        })
+        .max_by_key(|(prefix, _)| prefix.len())
+        .map(|(_, setting)| setting)
+}
+
 /// Runs every document-level rule against one parsed ADR.
 ///
 /// `root` is the project root, used by rules that resolve links. Family modules

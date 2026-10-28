@@ -136,6 +136,7 @@ fn collect(loaded: &config::Loaded, paths: &[PathBuf], check_lock: bool) -> Resu
         findings.extend(lock::missing_entries(&manifest, &loaded.root));
     }
 
+    rules::apply_overrides(&mut findings, &loaded.config.rules);
     diagnostics::sort(&mut findings);
     Ok((findings, documents))
 }

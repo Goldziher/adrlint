@@ -16,6 +16,8 @@ pub struct Config {
     pub lock: LockConfig,
     #[serde(default)]
     pub markdown: MarkdownConfig,
+    #[serde(default)]
+    pub rules: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -221,6 +223,12 @@ fn validate(config: &Config) -> Result<()> {
             bail!("markdown.rules.{code} must be one of off, warn or error, found {setting:?}");
         }
     }
+    for (code, setting) in &config.rules {
+        let setting = setting.trim();
+        if !matches_ignore_ascii_case(setting, &["off", "warn", "error"]) {
+            bail!("rules.{code} must be one of off, warn or error, found {setting:?}");
+        }
+    }
     Ok(())
 }
 
@@ -276,6 +284,10 @@ enabled = true
 MD013 = "off"
 # Decision records legitimately embed HTML tables and other inline markup.
 MD033 = "off"
+
+# Per-rule severity for MADR and ADR codes. Keys match by longest prefix.
+[rules]
+# MADR03 = "warn"
 "#,
         dir, start
     )
@@ -363,6 +375,20 @@ mod tests {
         config.markdown.rules.insert("MD009".to_owned(), "maybe".to_owned());
         let error = validate(&config).unwrap_err().to_string();
         assert!(error.contains("markdown.rules.MD009 must be one of off, warn or error"));
+    }
+
+    #[test]
+    fn should_parse_rule_overrides() {
+        let config: Config = toml::from_str("[rules]\nMADR03 = \"warn\"\n").unwrap();
+        assert_eq!(config.rules.get("MADR03").map(String::as_str), Some("warn"));
+    }
+
+    #[test]
+    fn should_reject_an_unknown_rule_severity() {
+        let mut config = Config::default();
+        config.rules.insert("MADR03".to_owned(), "maybe".to_owned());
+        let error = validate(&config).unwrap_err().to_string();
+        assert!(error.contains("rules.MADR03 must be one of off, warn or error"));
     }
 
     #[test]
