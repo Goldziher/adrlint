@@ -27,9 +27,9 @@ The tool is opinionated in four ways:
 
 ### Source Code (`src/`)
 
-The 0.1.0 scaffold implements `cli`, `config`, `discovery`, `diagnostics`, `report`, `rules` and
-`template`. The remaining modules below are the target layout and land with the rule families they
-serve; do not create empty placeholders for them.
+The 0.1.0 release implements `cli`, `config`, `discovery`, `diagnostics`, `report`, `rules`,
+`template`, `adr` and `lock`. The `markdown` module (`rumdl` diagnostics and formatting) is the
+remaining part of the target layout; do not create empty placeholders for it.
 
 - `main.rs` — entry point and process exit codes
 - `cli.rs` — clap command and flag definitions

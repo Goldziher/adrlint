@@ -26,8 +26,8 @@ merged in.
 
 ### Shape
 
-The 0.1.0 scaffold parses `[adr]` only. A key from the other tables is an unknown-key error until the
-rule family that consumes it lands, rather than a silent no-op.
+The 0.1.0 release parses `[adr]` and `[lock]`. A key from `[lint]`, `[markdown]` or `[rules]` is an
+unknown-key error until the rule family that consumes it lands, rather than a silent no-op.
 
 ```toml
 [adr]

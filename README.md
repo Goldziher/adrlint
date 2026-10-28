@@ -39,22 +39,23 @@ adrlint is built to check all four in one run, from one parse, with one exit cod
 
 adrlint is at **0.1.0** and under active construction. The implemented surface is:
 
-- `adrlint lint` — directory rules `MADR41a`, `MADR41b`, `MADR42`, `MADR43`, `MADR44`
+- `adrlint lint` — `MADR01`–`MADR08` structural rules, `MADR41`–`MADR44` directory rules, and
+  `ADR50`/`ADR51` immutability checks
 - `adrlint init` — writes `.adrlint.toml` and a starter ADR
 - `adrlint new "<title>"` — creates the next sequential ADR
+- `adrlint lock` / `adrlint unlock` — the content-hash immutability manifest
 
-The MADR structural rules, rumdl Markdown findings, `adrlint format`, and content-hash locking are
-specified below and are the next releases. The rule IDs and configuration keys are stable from the
-first release; nothing in this README is a placeholder name.
+The link, metadata and style rules (`MADR11`–`MADR31`), rumdl Markdown findings and `adrlint format`
+are the next releases. The rule IDs and configuration keys are stable from the first release;
+nothing in this README is a placeholder name.
 
 ## Features
 
 - **MADR rules** — the rules from [`adr/madrlint`](https://github.com/adr/madrlint), with stable IDs
-  _(structural rules next)_
 - **Markdown quality** — [rumdl](https://github.com/rvben/rumdl) linked in-process, not shelled out to
   _(next)_
 - **Sequential numbering** — start at `0000` or `0001`, no gaps, no collisions, no renumbering
-- **Immutability** — accepted ADRs locked by a content hash, not by file timestamps _(next)_
+- **Immutability** — accepted ADRs locked by a content hash, not by file timestamps
 - **Formatting** — one formatter for the Markdown and the MADR structure _(next)_
 - **Gate-ready** — non-zero exit on errors, GitHub annotations, JSON output
 - **Single binary** — no runtime, no downloaded grammar, no bundled script
@@ -117,9 +118,11 @@ command could not run (bad arguments, unreadable path, invalid configuration).
 adrlint [--config PATH] [--no-color] <COMMAND>
 
 Commands:
-  lint   Lint ADR files and the directory that holds them
-  init   Write a starter configuration and ADR directory
-  new    Create the next sequential ADR
+  lint    Lint ADR files and the directory that holds them
+  init    Write a starter configuration and ADR directory
+  new     Create the next sequential ADR
+  lock    Record canonical content hashes for accepted ADRs
+  unlock  Remove one ADR from the immutability manifest
 
 Options:
   --config <PATH>   Path to the configuration file
@@ -155,10 +158,30 @@ adrlint new "<title>"
 Creates the next number with `O_EXCL`, so two concurrent invocations cannot claim the same file. The
 new ADR starts as `proposed` and is not locked.
 
+### `adrlint lock`
+
+```text
+adrlint lock [PATH]... [--check] [--all]
+```
+
+Lints first and refuses to lock a directory with errors. By default it locks `accepted` and
+`rejected` ADRs; `--all` includes drafts. `--check` verifies the manifest without writing and exits
+`1` when it is out of date.
+
+### `adrlint unlock`
+
+```text
+adrlint unlock <PATH> --reason "<why>"
+```
+
+Removes one entry. The reason is printed for the commit message and the lock-file diff is the audit
+trail. The ADR itself is not modified.
+
 ## Rules
 
-`MADR41a`–`MADR44` are implemented in 0.1.0. The remaining families are the port in progress; their
-IDs, thresholds and messages are fixed now so fixtures and suppressions do not move later.
+`MADR01`–`MADR08`, `MADR41`–`MADR44` and `ADR50`/`ADR51` are implemented in 0.1.0. The link,
+metadata and style families are the port in progress; their IDs, thresholds and messages are fixed
+now so fixtures and suppressions do not move later.
 
 Rule IDs are public API. Suppressing or re-severitying one in `.adrlint.toml` must keep working across
 releases; a new check gets a new ID.
@@ -237,9 +260,14 @@ file at `dirs::config_dir()/adrlint/config.toml` is the fallback.
 dir = "docs/adr"
 start = 1 # 0 or 1; used by init and new
 allow_gaps = false # only for imported histories
+
+[lock]
+enabled = true
+path = "adrlint.lock"
+statuses = ["accepted", "rejected"]
 ```
 
-The `[lint]`, `[markdown]`, `[rules]` and `[lock]` tables land with the rules that consume them:
+The `[lint]`, `[markdown]` and `[rules]` tables land with the rules that consume them:
 
 ```toml
 [lint]
@@ -254,11 +282,6 @@ MD013 = "off"
 [rules]
 MADR03 = "error"
 MADR12c = "warn"
-
-[lock]
-enabled = true
-path = "adrlint.lock"
-statuses = ["accepted", "rejected"]
 ```
 
 Unknown keys are errors, not silently ignored.
@@ -283,11 +306,12 @@ blake3 = "…"
 - `adrlint unlock <path> --reason <text>` removes one entry. The lock-file diff is the audit trail.
 - The hash is over a **semantic serialization**, not the bytes on disk. Formatting, line endings and
   paragraph reflow do not change it; a changed word, heading, link target or code sample does.
+- `adrlint lock --check` is the strict CI form; `adrlint lint` reports stale locks as errors.
 - The `canonical` field versions that serializer, so a tool upgrade warns instead of failing every
   consumer's build.
 
-This lands in the release after the structural rules; the manifest format is fixed now so the first
-lock file will not need migrating.
+The manifest is committed. It is reviewed like source; `ADR50` and `ADR51` are the only findings a
+change to it can produce.
 
 ## Sequentiality
 
@@ -348,11 +372,11 @@ registers a problem matcher so findings appear inline on the diff.
 ## Roadmap
 
 - [x] Directory rules, `lint`, `init`, `new`
-- [ ] Markdown parser and document model
-- [ ] `MADR01`–`MADR08` structural rules
+- [x] Markdown parser and document model
+- [x] `MADR01`–`MADR08` structural rules
+- [x] `adrlint lock` / `unlock` with semantic hashing
 - [ ] `MADR21`, `MADR31` and local-link rules
 - [ ] rumdl diagnostics and `adrlint format`
-- [ ] `adrlint lock` / `unlock` with semantic hashing
 - [ ] External link checking (opt-in)
 - [ ] 1.0 release
 

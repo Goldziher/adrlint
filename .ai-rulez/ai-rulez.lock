@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.9.2'
 scope = 'all'
-tree = 'sha256:437841b607d8cb45305f9b77c2dc05a8afe2ddb4d5082f3e0868698a914f5005'
+tree = 'sha256:9f4983e6746e0adaed5b67c8da30ce9f6fa4472244134273a09c815e2a6d182f'
 
 [[served]]
 name = 'build'
@@ -148,7 +148,7 @@ digest = 'sha256:6e41ae4ac949913d19fe0a5d21b4a43a99223bfb1377c82ab2011c06332d6bb
 kind = 'context'
 id = 'architecture'
 path = 'context/architecture.md'
-digest = 'sha256:e99ba328b45ebaf399eff43622a22982944715d233794dc4c555011f3e7c7bfa'
+digest = 'sha256:f5d1197700eda472fe1fb51d881d4a7043d38307a918728f507cb348062df38d'
 
 [[item]]
 kind = 'context'
@@ -172,7 +172,7 @@ digest = 'sha256:c78115a5173a18ebceae477cb22e7f0b05e90298c29932a85a6c4c215ddb71e
 kind = 'rule'
 id = 'configuration-system'
 path = 'rules/configuration-system.md'
-digest = 'sha256:3c3dd3310668c14fb6e5606bcb369dfdf3113660b5a5a61eba0b6a8fc22199b1'
+digest = 'sha256:d56170accdd0d9dea5f527dbd49b3a29cdd83119afc1db61f8faa1fa4ab108a8'
 
 [[item]]
 kind = 'rule'

@@ -6,9 +6,18 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- `adrlint lint` with directory rules `MADR41a`, `MADR41b`, `MADR42`, `MADR43` and `MADR44`, text,
-  JSON and GitHub output, and exit codes `0`/`1`/`2`.
-- `adrlint init` to write `.adrlint.toml`, create the ADR directory and add the first record.
-- `adrlint new "<title>"` to create the next sequential ADR without overwriting an existing file.
-- Layered `.adrlint.toml` configuration with `[adr]` keys `dir`, `start` and `allow_gaps`.
-- npm, PyPI and Homebrew wrappers, a composite GitHub Action, and pre-commit hooks.
+- A single Markdown parse per ADR (`src/adr/`), with front matter, headings and section spans, list
+  items, code blocks, tables, links, images and byte offsets.
+- `MADR01`–`MADR08` structural rules, ported from madrlint: mandatory sections, empty sections,
+  chosen-option and rationale wording, heading levels, nesting and section order.
+- `ADR50` / `ADR51` immutability rules and `adrlint lock` / `adrlint unlock`.
+- `adrlint.lock` hashes a canonical content serialization, not raw or formatted bytes; list markers,
+  heading style, line wrapping, CRLF and reordered front matter keys do not break a lock.
+- `adrlint lint` now reports structural and locking findings alongside the directory rules.
+- `[lock]` configuration with `enabled`, `path` and `statuses`.
+
+### Changed
+
+- `adrlint init` writes the `[lock]` table and a stable starter configuration.
+- `adrlint lock --check` is the strict CI form; `adrlint lock` lints first and refuses to freeze an
+  invalid ADR.
