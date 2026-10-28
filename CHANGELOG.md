@@ -16,7 +16,8 @@ All notable changes to this project are documented in this file.
   findings are errors by default and can be downgraded per rule.
 - `ADR50` / `ADR51` immutability rules and `adrlint lock` / `adrlint unlock`.
 - `adrlint.lock` hashes a canonical content serialization, not raw or formatted bytes; list markers,
-  heading style, line wrapping, CRLF and reordered front matter keys do not break a lock.
+  heading style, line wrapping, CRLF, code-fence info strings and reordered front matter keys do not
+  break a lock.
 - `adrlint lint` now reports structural and locking findings alongside the directory rules.
 - `[lock]` configuration with `enabled`, `path` and `statuses`.
 - `[markdown]` configuration with `enabled` and per-rule `off`/`warn`/`error` settings. `MD013` and

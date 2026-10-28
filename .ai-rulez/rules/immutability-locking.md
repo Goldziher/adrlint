@@ -42,16 +42,18 @@ on disk, and never over a formatted rendering. A renderer still encodes formatti
 markers, heading style, line wrapping), so the input is the document model instead:
 
 **Included:** front matter (canonical key order, typed values), the heading tree and its levels,
-paragraph text with soft wraps collapsed, hard breaks, list nesting and item text, code block language
-and exact body, table content, links (text, destination, title), images, and raw HTML.
+paragraph text with soft wraps collapsed, hard breaks, list nesting and item text, code block body,
+table content, links (text, destination, title), images, and raw HTML.
 
 **Excluded:** list markers, heading style (ATX/setext), emphasis markers, link style, blank-line
-counts, trailing whitespace, table alignment, fence style, and line wrapping.
+counts, trailing whitespace, table alignment, fence style, a code block's info string, and line
+wrapping.
 
 `adrlint lock` builds the model in memory and never writes. `adrlint lint` does the same for each
 locked file before comparing. Consequences:
 
-- `adrlint format`, rumdl formatting and a manual reflow never break a lock.
+- `adrlint format`, rumdl formatting and a manual reflow never break a lock. A fix that rewrites
+  prose or a heading is a content edit, not formatting, and therefore needs an unlock.
 - A CRLF checkout and an LF checkout produce the same hash.
 - Changing a word, a heading, a link target or a code sample does break it. A hard line break is
   content; a soft wrap is not.

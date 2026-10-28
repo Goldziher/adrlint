@@ -327,8 +327,9 @@ blake3 = "…"
 - `adrlint lock` covers `accepted` and `rejected` ADRs; `--all` includes drafts.
 - `adrlint lint` verifies the entries that exist; new, unlocked ADRs are fine.
 - `adrlint unlock <path> --reason <text>` removes one entry. The lock-file diff is the audit trail.
-- The hash is over a **semantic serialization**, not the bytes on disk. Formatting, line endings and
-  paragraph reflow do not change it; a changed word, heading, link target or code sample does.
+- The hash is over a **semantic serialization**, not the bytes on disk. Formatting, line endings,
+  list markers, fence styles and paragraph reflow do not change it; a changed word, heading, link
+  target or code body does. A formatter fix that rewrites prose still needs an unlock.
 - `adrlint lock --check` is the strict CI form; `adrlint lint` reports stale locks as errors.
 - The `canonical` field versions that serializer, so a tool upgrade warns instead of failing every
   consumer's build.

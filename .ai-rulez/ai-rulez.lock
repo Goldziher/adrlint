@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.9.2'
 scope = 'all'
-tree = 'sha256:a06139080a8f357c51103320d2496312c1e13c348eab3773707baabf0e2d086e'
+tree = 'sha256:af40912bf2952d2849e0fd87e5b542558473abe9548dfc033883f46108e88680'
 
 [[served]]
 name = 'build'
@@ -184,7 +184,7 @@ digest = 'sha256:6a012073119fa801150a2132d5e9ecd25a0a285d6f256b0b765218c7059a754
 kind = 'rule'
 id = 'immutability-locking'
 path = 'rules/immutability-locking.md'
-digest = 'sha256:cb9a48e387b28c364972c41d711e21cd2e369bdca23ceb35a663c4e30f68c832'
+digest = 'sha256:2ac431499fc671a858d11f9a1cee5a9f1bdbed8fd0b0bd5747d2a9d0feeb4b3b'
 
 [[item]]
 kind = 'rule'
