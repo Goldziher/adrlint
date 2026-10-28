@@ -1,3 +1,4 @@
+pub mod adr;
 pub mod cli;
 pub mod config;
 pub mod diagnostics;
