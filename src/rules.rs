@@ -4,6 +4,10 @@ use crate::config::AdrConfig;
 use crate::diagnostics::Diagnostic;
 use crate::discovery::{AdrFile, Directory};
 
+mod structure;
+
+pub use structure::check_structure;
+
 pub fn check_directory(directory: &Directory, config: &AdrConfig) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     check_start(directory, &mut diagnostics);
