@@ -10,7 +10,7 @@ x-ai-rulez:
 
 ## Configuration System
 
-Layered TOML defined in `src/config/` and resolved by `ConfigManager` (`src/config/manager.rs`).
+Layered TOML defined in `src/config.rs` and resolved by `config::load`.
 
 ### Precedence (highest to lowest)
 
