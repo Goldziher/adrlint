@@ -1,0 +1,42 @@
+#!/usr/bin/env node
+// Launcher stub. The real executable is fetched per-platform by install.js and
+// lands beside this file as adrlint-bin (or adrlint.exe on Windows). Keeping
+// the npm `bin` entry a script means the published tarball stays platform-neutral
+// and npm can generate its Windows .cmd shim.
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const isWindows = os.type() === "Windows_NT";
+const executable = path.join(
+  __dirname,
+  isWindows ? "adrlint.exe" : "adrlint-bin",
+);
+
+if (!fs.existsSync(executable)) {
+  console.error(
+    [
+      "adrlint: the native binary is missing.",
+      "",
+      "It is downloaded by this package's postinstall step. Reinstall to retry:",
+      "  pnpm add -g adrlint",
+      "",
+      "If the install ran with --ignore-scripts, the binary was never fetched.",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
+
+const result = spawnSync(executable, process.argv.slice(2), {
+  stdio: "inherit",
+});
+
+if (result.error) {
+  console.error(`adrlint: could not run ${executable}: ${result.error.message}`);
+  process.exit(1);
+}
+
+// A child killed by a signal reports status null; surface that as a failure
+// rather than exiting 0.
+process.exit(result.status === null ? 1 : result.status);

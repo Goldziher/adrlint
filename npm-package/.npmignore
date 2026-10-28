@@ -1,0 +1,8 @@
+# package.json "files" is the authoritative whitelist and cannot be overridden from
+# here; these entries only keep downloaded artifacts out of a locally packed tarball.
+bin/adrlint-bin
+bin/adrlint.exe
+*.tar.gz
+*.zip
+test_*.js
+test_*.py

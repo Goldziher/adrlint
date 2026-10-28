@@ -1,0 +1,91 @@
+name: adrlint
+description: >-
+  Lint MADR architecture decision records: structure, numbering, Markdown quality and immutability.
+author: Goldziher
+branding:
+  icon: check-square
+  color: orange
+
+inputs:
+  version:
+    description: >-
+      adrlint version to install, with or without a leading `v` (e.g. "0.1.0"). Defaults to the tag
+      this action is pinned to (`github.action_ref`) — a full release or a floating major tag such as
+      `v0`, which resolves to the newest 0.x release — otherwise the latest GitHub release.
+    required: false
+    default: ""
+  args:
+    description: >-
+      Arguments to pass to adrlint, as a single space-separated string (e.g. "lint" or
+      "lint docs/adr --format github"). Ignored when install-only is true.
+    required: false
+    default: "lint"
+  working-directory:
+    description: Directory to run adrlint in.
+    required: false
+    default: "."
+  install-only:
+    description: Install adrlint and put it on PATH, but do not run it.
+    required: false
+    default: "false"
+  token:
+    description: >-
+      Token used to query the GitHub API and download release assets. Defaults to the workflow's
+      GITHUB_TOKEN, which is enough for a public repository.
+    required: false
+    default: ${{ github.token }}
+  repository:
+    description: "Advanced: override the owner/repo release assets are downloaded from."
+    required: false
+    default: "Goldziher/adrlint"
+
+outputs:
+  version:
+    description: The adrlint version that was installed (without the leading v).
+    value: ${{ steps.install.outputs.version }}
+  path:
+    description: Absolute path to the installed adrlint binary.
+    value: ${{ steps.install.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve version and release asset
+      id: resolve
+      shell: bash
+      env:
+        VERSION_INPUT: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
+        REPOSITORY: ${{ inputs.repository }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: bash "${{ github.action_path }}/scripts/gh-action-resolve.sh"
+
+    - name: Cache adrlint binary
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: ${{ steps.resolve.outputs.bin-dir }}
+        key: adrlint-${{ steps.resolve.outputs.tag }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install adrlint
+      id: install
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        REPO: ${{ steps.resolve.outputs.repo }}
+        TAG: ${{ steps.resolve.outputs.tag }}
+        ASSET: ${{ steps.resolve.outputs.asset }}
+        EXT: ${{ steps.resolve.outputs.ext }}
+        CHECKSUMS: ${{ steps.resolve.outputs.checksums }}
+        BIN_DIR: ${{ steps.resolve.outputs.bin-dir }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: bash "${{ github.action_path }}/scripts/gh-action-install.sh"
+
+    - name: Run adrlint
+      if: inputs.install-only != 'true'
+      shell: bash
+      env:
+        ARGS: ${{ inputs.args }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        MATCHER_PATH: ${{ github.action_path }}/problem-matcher.json
+      run: bash "${{ github.action_path }}/scripts/gh-action-run.sh"

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=84.0.0", "wheel>=0.48.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adrlint"
+version = "0.1.0"
+description = "A fast, opinionated linter and formatter for MADR architecture decision records"
+readme = "README.md"
+license = "MIT"
+authors = [
+    {name = "Na'aman Hirschfeld", email = "nhirschfeld@gmail.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Documentation",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Text Processing",
+    "Environment :: Console"
+]
+keywords = ["adr", "architecture-decision-record", "madr", "linter", "markdown", "cli", "rust"]
+requires-python = ">=3.10"
+dependencies = [
+    "certifi>=2026.7.22"
+]
+
+[project.urls]
+Homepage = "https://github.com/Goldziher/adrlint"
+Repository = "https://github.com/Goldziher/adrlint.git"
+Issues = "https://github.com/Goldziher/adrlint/issues"
+
+[project.scripts]
+adrlint = "adrlint.cli:main"
+
+[tool.setuptools]
+packages = ["adrlint"]

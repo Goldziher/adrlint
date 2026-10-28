@@ -1,0 +1,31 @@
+- id: adrlint
+  name: adrlint format
+  description: Format MADR architecture decision records in place
+  entry: adrlint format
+  language: rust
+  types_or: [markdown]
+  files: (^|/)(adr|adrs|decisions|doc/adr|docs/adr)/.*\.md$
+  require_serial: true
+  pass_filenames: true
+  minimum_pre_commit_version: "2.9.0"
+
+- id: adrlint-lint
+  name: adrlint lint
+  description: Lint MADR architecture decision records
+  entry: adrlint lint
+  language: rust
+  types_or: [markdown]
+  files: (^|/)(adr|adrs|decisions|doc/adr|docs/adr)/.*\.md$
+  require_serial: true
+  pass_filenames: true
+  minimum_pre_commit_version: "2.9.0"
+
+- id: adrlint-lock
+  name: adrlint lock check
+  description: Fail when a locked ADR has been modified without an explicit unlock
+  entry: adrlint lock --check
+  language: rust
+  files: (\.md$|(^|/)adrlint\.lock$)
+  require_serial: true
+  pass_filenames: false
+  minimum_pre_commit_version: "2.9.0"

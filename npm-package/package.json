@@ -1,0 +1,43 @@
+{
+  "name": "adrlint",
+  "version": "0.1.0",
+  "description": "A fast, opinionated linter and formatter for MADR architecture decision records",
+  "bin": {
+    "adrlint": "bin/adrlint"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "keywords": [
+    "adr",
+    "architecture-decision-record",
+    "madr",
+    "linter",
+    "markdown",
+    "cli",
+    "rust",
+    "documentation"
+  ],
+  "author": "Na'aman Hirschfeld",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Goldziher/adrlint.git"
+  },
+  "homepage": "https://github.com/Goldziher/adrlint#readme",
+  "bugs": {
+    "url": "https://github.com/Goldziher/adrlint/issues"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "tar": "^7.5.22"
+  },
+  "files": [
+    "install.js",
+    "bin/adrlint"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@12.11.2"
+}
