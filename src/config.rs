@@ -218,12 +218,18 @@ fn validate(config: &Config) -> Result<()> {
         bail!("lock.statuses must not contain empty values");
     }
     for (code, setting) in &config.markdown.rules {
+        if code.trim().is_empty() {
+            bail!("markdown.rules keys must not be empty");
+        }
         let setting = setting.trim();
         if !matches_ignore_ascii_case(setting, &["off", "warn", "error"]) {
             bail!("markdown.rules.{code} must be one of off, warn or error, found {setting:?}");
         }
     }
     for (code, setting) in &config.rules {
+        if code.trim().is_empty() {
+            bail!("rules keys must not be empty");
+        }
         let setting = setting.trim();
         if !matches_ignore_ascii_case(setting, &["off", "warn", "error"]) {
             bail!("rules.{code} must be one of off, warn or error, found {setting:?}");
