@@ -39,27 +39,28 @@ adrlint is built to check all four in one run, from one parse, with one exit cod
 
 adrlint is at **0.1.0** and under active construction. The implemented surface is:
 
-- `adrlint lint` — `MADR01`–`MADR08` structural rules, `MADR41`–`MADR44` directory rules, and
-  `ADR50`/`ADR51` immutability checks
+- `adrlint lint` — `MADR01`–`MADR08` structural rules, `MADR12`/`MADR21`/`MADR31` integrity and
+  style rules, `MADR41`–`MADR44` directory rules, `ADR50`/`ADR51` immutability checks, and rumdl's
+  `MD###` Markdown rules
+- `adrlint format` — rumdl's fixes, with `--check` for CI
 - `adrlint init` — writes `.adrlint.toml` and a starter ADR
 - `adrlint new "<title>"` — creates the next sequential ADR
 - `adrlint lock` / `adrlint unlock` — the content-hash immutability manifest
 
-The link, metadata and style rules (`MADR11`–`MADR31`), rumdl Markdown findings and `adrlint format`
-are the next releases. The rule IDs and configuration keys are stable from the first release;
-nothing in this README is a placeholder name.
+External link checking (`MADR11`) is the remaining MADR rule; it is opt-in because it needs network
+access. The rule IDs and configuration keys are stable from the first release; nothing in this
+README is a placeholder name.
 
 ## Features
 
 - **MADR rules** — the rules from [`adr/madrlint`](https://github.com/adr/madrlint), with stable IDs
 - **Markdown quality** — [rumdl](https://github.com/rvben/rumdl) linked in-process, not shelled out to
-  _(next)_
 - **Sequential numbering** — start at `0000` or `0001`, no gaps, no collisions, no renumbering
 - **Immutability** — accepted ADRs locked by a content hash, not by file timestamps
-- **Formatting** — one formatter for the Markdown and the MADR structure _(next)_
+- **Formatting** — one formatter for the Markdown, idempotent by construction
 - **Gate-ready** — non-zero exit on errors, GitHub annotations, JSON output
 - **Single binary** — no runtime, no downloaded grammar, no bundled script
-- **Configurable** — layered `.adrlint.toml` with per-rule severities
+- **Configurable** — layered `.adrlint.toml` with per-rule Markdown severities
 
 ## Installation
 
@@ -105,6 +106,10 @@ adrlint lint
 # Create the next ADR
 adrlint new "Use PostgreSQL for event storage"
 
+# Format the Markdown, then verify it in CI
+adrlint format
+adrlint format --check
+
 # Lint with GitHub annotations
 adrlint lint --format github
 ```
@@ -119,6 +124,7 @@ adrlint [--config PATH] [--no-color] <COMMAND>
 
 Commands:
   lint    Lint ADR files and the directory that holds them
+  format  Format ADR files with rumdl
   init    Write a starter configuration and ADR directory
   new     Create the next sequential ADR
   lock    Record canonical content hashes for accepted ADRs
@@ -138,6 +144,16 @@ adrlint lint [PATH]... [--format text|json|github]
 With no paths, `lint` uses `adr.dir` from the configuration. With paths, each directory is linted in
 full and each file is resolved to its parent directory — so a pre-commit hook that passes only the
 changed files still sees the whole directory.
+
+### `adrlint format`
+
+```text
+adrlint format [PATH]... [--check]
+```
+
+Resolves paths exactly like `lint`, then applies rumdl's fixes to each `.md` file. Only files that
+change are written, and each is printed. `--check` writes nothing and exits `1` when a file would
+change, which is the form to run in CI. Formatting is idempotent: a second run changes nothing.
 
 ### `adrlint init`
 
@@ -179,9 +195,8 @@ trail. The ADR itself is not modified.
 
 ## Rules
 
-`MADR01`–`MADR08`, `MADR41`–`MADR44` and `ADR50`/`ADR51` are implemented in 0.1.0. The link,
-metadata and style families are the port in progress; their IDs, thresholds and messages are fixed
-now so fixtures and suppressions do not move later.
+Every MADR rule except external link checking (`MADR11`, opt-in and network-dependent) is
+implemented in 0.1.0, along with `ADR50`/`ADR51` and the rumdl `MD###` rules.
 
 Rule IDs are public API. Suppressing or re-severitying one in `.adrlint.toml` must keep working across
 releases; a new check gets a new ID.
@@ -246,9 +261,11 @@ releases; a new check gets a new ID.
 
 ### Markdown (`MD###`)
 
-rumdl's rules are reported verbatim, so a suppression you already know keeps working. Opinionated
-defaults: line length (`MD013`) and inline HTML (`MD033`) are off; ADR prose is reflowed and decision
-records legitimately embed HTML tables.
+rumdl's rules are reported verbatim, so a suppression you already know keeps working. Every enabled
+Markdown rule is an error by default, so `lint` gates on Markdown quality without extra configuration;
+`[markdown.rules] MD009 = "warn"` downgrades one rule. Opinionated defaults: line length (`MD013`) and
+inline HTML (`MD033`) are off, because ADR prose is reflowed and decision records legitimately embed
+HTML tables. `MD004` is pinned to `*`, matching `MADR31`, so `format` and `lint` agree.
 
 ## Configuration
 
@@ -265,19 +282,25 @@ allow_gaps = false # only for imported histories
 enabled = true
 path = "adrlint.lock"
 statuses = ["accepted", "rejected"]
-```
-
-The `[lint]`, `[markdown]` and `[rules]` tables land with the rules that consume them:
-
-```toml
-[lint]
-check_external_links = false
 
 [markdown]
 enabled = true
 
 [markdown.rules]
 MD013 = "off"
+MD033 = "off"
+```
+
+`[markdown].enabled = false` removes every rumdl finding and every rumdl fix. `[markdown.rules]` takes
+`off`, `warn` or `error`, keyed by rumdl's own code: `off` removes both the finding and the fix, while
+`warn` and `error` set the finding's severity. A rule you do not name keeps its default — the shipped
+ones turn `MD013` and `MD033` off.
+
+The `[lint]` and `[rules]` tables land with the rules that consume them:
+
+```toml
+[lint]
+check_external_links = false
 
 [rules]
 MADR03 = "error"
@@ -374,10 +397,11 @@ registers a problem matcher so findings appear inline on the diff.
 - [x] Directory rules, `lint`, `init`, `new`
 - [x] Markdown parser and document model
 - [x] `MADR01`–`MADR08` structural rules
+- [x] `MADR12`, `MADR21`, `MADR31` link, metadata and style rules
 - [x] `adrlint lock` / `unlock` with semantic hashing
-- [ ] `MADR21`, `MADR31` and local-link rules
-- [ ] rumdl diagnostics and `adrlint format`
-- [ ] External link checking (opt-in)
+- [x] rumdl diagnostics and `adrlint format`
+- [ ] External link checking (`MADR11`, opt-in)
+- [ ] `[lint]` and `[rules]` configuration tables
 - [ ] 1.0 release
 
 ## Contributing

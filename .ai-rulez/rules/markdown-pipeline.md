@@ -29,14 +29,16 @@ rumdl is linked in-process through `rumdl_lib`; it is not shelled out to and the
 download.
 
 - `adrlint lint` runs rumdl over the same source and converts each diagnostic into an adrlint finding
-  carrying rumdl's own `MD###` code, so users can suppress it with the code they already know.
+  carrying rumdl's own `MD###` code, so users can suppress it with the code they already know. An
+  enabled Markdown rule is an error by default; `[markdown.rules] <CODE> = "warn"` downgrades it.
 - `adrlint format` applies rumdl fixes and MADR fixes to one buffer. Formatting is idempotent: a
   second run changes nothing.
 - Markdown findings are disabled wholesale with `[markdown].enabled = false`; individual rules are
   configured with `[markdown.rules]`.
 - Defaults are opinionated: MD013 (line length) is off because ADR prose is reflowed by authors, and
-  MD033 (inline HTML) is off because decision records legitimately embed HTML tables. Do not silently
-  change a rumdl default; write the override in the generated config.
+  MD033 (inline HTML) is off because decision records legitimately embed HTML tables. MD004 is pinned
+  to `*` so the formatter cannot choose a marker MADR31 rejects. Do not silently change a rumdl
+  default; write the override in the generated config.
 - rumdl's MSRV is adrlint's MSRV. Bumping rumdl can alter formatting, but locking hashes content
   rather than formatted bytes, so a formatter bump never invalidates a lock.
 

@@ -50,7 +50,7 @@ Chosen option: "<option>", because <rationale>
 ### Rule IDs
 
 - `MADR01`–`MADR08` — structural integrity, ported from madrlint unchanged
-- `MADR11`–`MADR12` — external and local link validity
+- `MADR11`–`MADR12` — external (opt-in) and local link validity
 - `MADR21` — YAML front matter syntax
 - `MADR31` — `*` as the list marker
 - `MADR41`–`MADR44` — directory numbering, naming and foreign files
