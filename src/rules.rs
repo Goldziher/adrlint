@@ -6,17 +6,26 @@ use crate::config::AdrConfig;
 use crate::diagnostics::Diagnostic;
 use crate::discovery::{AdrFile, Directory};
 
+mod links;
+mod metadata;
 mod structure;
+mod style;
 
+pub use links::check_links;
+pub use metadata::check_metadata;
 pub use structure::check_structure;
+pub use style::check_style;
 
 /// Runs every document-level rule against one parsed ADR.
 ///
 /// `root` is the project root, used by rules that resolve links. Family modules
 /// append their findings here so the CLI never needs to know which rules exist.
 pub fn check_document(document: &Document, path: &Path, root: &Path) -> Vec<Diagnostic> {
-    let _ = root;
-    check_structure(document, path)
+    let mut diagnostics = check_structure(document, path);
+    diagnostics.extend(check_links(document, path, root));
+    diagnostics.extend(check_metadata(document, path));
+    diagnostics.extend(check_style(document, path));
+    diagnostics
 }
 
 pub fn check_directory(directory: &Directory, config: &AdrConfig) -> Vec<Diagnostic> {

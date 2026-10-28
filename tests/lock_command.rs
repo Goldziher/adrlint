@@ -56,10 +56,14 @@ fn should_lock_accepted_adrs_and_detect_content_changes() {
     let reformatted = original.replace("* ", "- ");
     fs::write(&adr, &reformatted).unwrap();
     let output = run(adrlint().current_dir(directory.path()).arg("lint"));
+    let linted = stdout(&output);
     assert!(
-        output.status.success(),
-        "formatting only must not break the lock: {}",
-        stdout(&output)
+        linted.contains("[MADR31]"),
+        "MADR31 must reject the changed markers: {linted}"
+    );
+    assert!(
+        !linted.contains("[ADR50]"),
+        "formatting only must not break the lock: {linted}"
     );
 
     fs::write(&adr, reformatted.replace("two or three", "three or four")).unwrap();
@@ -77,6 +81,7 @@ fn should_lock_accepted_adrs_and_detect_content_changes() {
     let manifest = fs::read_to_string(directory.path().join("adrlint.lock")).unwrap();
     assert!(!manifest.contains(&key.to_string()));
 
+    fs::write(&adr, &original).unwrap();
     let output = run(adrlint().current_dir(directory.path()).arg("lint"));
     assert!(output.status.success(), "{}", stderr(&output));
 
