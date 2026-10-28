@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-label="adrlint — decisions, checked">
+  <defs>
+    <radialGradient id="glowAmber" cx="34%" cy="24%" r="62%">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBlue" cx="74%" cy="84%" r="58%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#f59e0b" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="340" rx="20" fill="#0d1117"/>
+  <rect width="1200" height="340" rx="20" fill="url(#glowAmber)"/>
+  <rect width="1200" height="340" rx="20" fill="url(#glowBlue)"/>
+
+  <g transform="translate(372,76) scale(1.6)">
+    <rect x="0" y="0" width="56" height="68" rx="8" fill="none" stroke="#f59e0b" stroke-width="3"/>
+    <line x1="13" y1="18" x2="43" y2="18" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+    <line x1="13" y1="30" x2="36" y2="30" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+    <line x1="13" y1="42" x2="30" y2="42" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+    <path d="M35 54 l6 6 l12 -14" fill="none" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="482" y="132" font-family="'JetBrains Mono','SF Mono','DejaVu Sans Mono',ui-monospace,monospace" font-size="58" font-weight="700" letter-spacing="-1.5">
+    <tspan fill="#f59e0b">adr</tspan><tspan fill="#6b7280">lint</tspan>
+  </text>
+
+  <text x="600" y="196" text-anchor="middle" font-family="'JetBrains Mono','SF Mono','DejaVu Sans Mono',ui-monospace,monospace" font-size="25" fill="#c9d1d9" letter-spacing="0.5">Decisions, checked.</text>
+
+  <line x1="470" y1="230" x2="730" y2="230" stroke="url(#rule)" stroke-width="2"/>
+
+  <text x="600" y="272" text-anchor="middle" font-family="'JetBrains Mono','SF Mono','DejaVu Sans Mono',ui-monospace,monospace" font-size="15" fill="#8b949e" letter-spacing="2.4">MADR · SEQUENTIAL · IMMUTABLE</text>
+</svg>

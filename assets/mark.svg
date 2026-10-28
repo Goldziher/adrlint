@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" width="64" height="80" role="img" aria-label="adrlint">
+  <rect x="2" y="2" width="60" height="76" rx="8" fill="#0d1117" stroke="#f59e0b" stroke-width="3"/>
+  <line x1="14" y1="20" x2="50" y2="20" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+  <line x1="14" y1="33" x2="42" y2="33" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+  <line x1="14" y1="46" x2="34" y2="46" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+  <path d="M38 60 l7 7 l13 -16" fill="none" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

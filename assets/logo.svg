@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 96" width="384" height="96" role="img" aria-label="adrlint">
+  <g transform="translate(8,14) scale(1.0)">
+    <rect x="0" y="0" width="56" height="68" rx="8" fill="none" stroke="#f59e0b" stroke-width="3"/>
+    <line x1="13" y1="18" x2="43" y2="18" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+    <line x1="13" y1="30" x2="36" y2="30" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+    <line x1="13" y1="42" x2="30" y2="42" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>
+    <path d="M35 54 l6 6 l12 -14" fill="none" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="88" y="62" font-family="'JetBrains Mono','SF Mono','DejaVu Sans Mono',ui-monospace,monospace" font-size="40" font-weight="700" letter-spacing="-1">
+    <tspan fill="#f59e0b">adr</tspan><tspan fill="#6b7280">lint</tspan>
+  </text>
+</svg>
