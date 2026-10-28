@@ -60,7 +60,7 @@ README is a placeholder name.
 - **Formatting** — one formatter for the Markdown, idempotent by construction
 - **Gate-ready** — non-zero exit on errors, GitHub annotations, JSON output
 - **Single binary** — no runtime, no downloaded grammar, no bundled script
-- **Configurable** — layered `.adrlint.toml` with per-rule Markdown severities
+- **Configurable** — layered `.adrlint.toml` with per-rule severities
 
 ## Installation
 
@@ -289,6 +289,10 @@ enabled = true
 [markdown.rules]
 MD013 = "off"
 MD033 = "off"
+
+[rules]
+MADR03 = "warn"
+MADR12c = "error"
 ```
 
 `[markdown].enabled = false` removes every rumdl finding and every rumdl fix. `[markdown.rules]` takes
@@ -296,15 +300,15 @@ MD033 = "off"
 `warn` and `error` set the finding's severity. A rule you do not name keeps its default — the shipped
 ones turn `MD013` and `MD033` off.
 
-The `[lint]` and `[rules]` tables land with the rules that consume them:
+`[rules]` sets the severity of MADR and ADR findings. A key matches every code it prefixes, ignoring
+case, and the longest key wins: `MADR03 = "warn"` covers `MADR03a` and `MADR03b`, while an explicit
+`MADR03b = "off"` removes only that variant.
+
+The `[lint]` table lands with external link checking:
 
 ```toml
 [lint]
 check_external_links = false
-
-[rules]
-MADR03 = "error"
-MADR12c = "warn"
 ```
 
 Unknown keys are errors, not silently ignored.
@@ -402,7 +406,7 @@ registers a problem matcher so findings appear inline on the diff.
 - [x] `adrlint lock` / `unlock` with semantic hashing
 - [x] rumdl diagnostics and `adrlint format`
 - [ ] External link checking (`MADR11`, opt-in)
-- [ ] `[lint]` and `[rules]` configuration tables
+- [ ] `[lint]` external-link configuration
 - [ ] 1.0 release
 
 ## Contributing

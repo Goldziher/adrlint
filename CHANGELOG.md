@@ -22,6 +22,8 @@ All notable changes to this project are documented in this file.
 - `[lock]` configuration with `enabled`, `path` and `statuses`.
 - `[markdown]` configuration with `enabled` and per-rule `off`/`warn`/`error` settings. `MD013` and
   `MD033` are off; `MD004` is pinned to `*` so formatting cannot produce a MADR31 violation.
+- `[rules]` severity overrides for MADR and ADR codes, matched by longest prefix, so a set such as
+  `MADR03` covers every variant and an explicit `MADR03b` still wins.
 
 ### Changed
 

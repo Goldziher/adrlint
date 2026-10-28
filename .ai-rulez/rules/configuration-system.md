@@ -26,8 +26,8 @@ merged in.
 
 ### Shape
 
-The 0.1.0 release parses `[adr]`, `[lock]` and `[markdown]`. A key from `[lint]` or `[rules]` is an
-unknown-key error until the rule family that consumes it lands, rather than a silent no-op.
+The 0.1.0 release parses `[adr]`, `[lock]`, `[markdown]` and `[rules]`. A key from `[lint]` is an
+unknown-key error until external link checking lands, rather than a silent no-op.
 
 ```toml
 [adr]
