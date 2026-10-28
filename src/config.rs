@@ -167,7 +167,7 @@ mod tests {
     fn should_reject_absolute_directory() {
         let config = Config {
             adr: AdrConfig {
-                dir: PathBuf::from("/tmp/adr"),
+                dir: std::env::temp_dir().join("adr"),
                 ..AdrConfig::default()
             },
         };
