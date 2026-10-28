@@ -68,7 +68,7 @@ fn collect(loaded: &config::Loaded, paths: &[PathBuf], check_lock: bool) -> Resu
             let source =
                 fs::read_to_string(&file.path).with_context(|| format!("reading ADR {}", file.path.display()))?;
             let document = adr::parse(&source);
-            findings.extend(rules::check_structure(&document, &file.path));
+            findings.extend(rules::check_document(&document, &file.path, &loaded.root));
             documents.push((file.path.clone(), document));
         }
     }

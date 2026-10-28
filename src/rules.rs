@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 
+use crate::adr::Document;
 use crate::config::AdrConfig;
 use crate::diagnostics::Diagnostic;
 use crate::discovery::{AdrFile, Directory};
@@ -7,6 +9,15 @@ use crate::discovery::{AdrFile, Directory};
 mod structure;
 
 pub use structure::check_structure;
+
+/// Runs every document-level rule against one parsed ADR.
+///
+/// `root` is the project root, used by rules that resolve links. Family modules
+/// append their findings here so the CLI never needs to know which rules exist.
+pub fn check_document(document: &Document, path: &Path, root: &Path) -> Vec<Diagnostic> {
+    let _ = root;
+    check_structure(document, path)
+}
 
 pub fn check_directory(directory: &Directory, config: &AdrConfig) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
