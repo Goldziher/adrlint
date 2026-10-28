@@ -11,6 +11,46 @@ pub const CONFIG_FILE_NAMES: [&str; 2] = [".adrlint.toml", "adrlint.toml"];
 pub struct Config {
     #[serde(default)]
     pub adr: AdrConfig,
+    #[serde(default)]
+    pub lock: LockConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LockConfig {
+    #[serde(default = "default_lock_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_lock_path")]
+    pub path: PathBuf,
+    #[serde(default = "default_lock_statuses")]
+    pub statuses: Vec<String>,
+}
+
+impl Default for LockConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            path: default_lock_path(),
+            statuses: default_lock_statuses(),
+        }
+    }
+}
+
+fn default_lock_enabled() -> bool {
+    true
+}
+
+fn default_lock_path() -> PathBuf {
+    PathBuf::from("adrlint.lock")
+}
+
+fn default_lock_statuses() -> Vec<String> {
+    vec!["accepted".to_owned(), "rejected".to_owned()]
+}
+
+/// Whether a status is covered by the lock list, case-insensitively.
+pub fn is_locked_status(config: &LockConfig, status: &str) -> bool {
+    config.statuses.iter().any(|locked| locked.eq_ignore_ascii_case(status))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -59,7 +99,7 @@ pub fn load(explicit: Option<&Path>) -> Result<Loaded> {
         let config = read(path)?;
         return Ok(Loaded {
             config,
-            root,
+            root: absolute(root),
             path: Some(path.to_path_buf()),
         });
     }
@@ -72,7 +112,7 @@ pub fn load(explicit: Option<&Path>) -> Result<Loaded> {
                 let config = read(&candidate)?;
                 return Ok(Loaded {
                     config,
-                    root: ancestor.to_path_buf(),
+                    root: absolute(ancestor.to_path_buf()),
                     path: Some(candidate),
                 });
             }
@@ -81,9 +121,14 @@ pub fn load(explicit: Option<&Path>) -> Result<Loaded> {
 
     Ok(Loaded {
         config: Config::default(),
-        root: cwd,
+        root: absolute(cwd),
         path: None,
     })
+}
+
+/// Canonicalises a root when possible; a root that does not exist is kept as given.
+fn absolute(path: PathBuf) -> PathBuf {
+    fs::canonicalize(&path).unwrap_or(path)
 }
 
 fn read(path: &Path) -> Result<Config> {
@@ -99,21 +144,30 @@ fn validate(config: &Config) -> Result<()> {
     if !matches!(config.adr.start, 0 | 1) {
         bail!("adr.start must be 0 or 1, found {}", config.adr.start);
     }
-    validate_dir(&config.adr.dir)
+    validate_dir(&config.adr.dir)?;
+    validate_relative(&config.lock.path, "lock.path")?;
+    if config.lock.statuses.iter().any(|status| status.trim().is_empty()) {
+        bail!("lock.statuses must not contain empty values");
+    }
+    Ok(())
 }
 
 pub fn validate_dir(dir: &Path) -> Result<()> {
-    if dir.is_absolute() {
-        bail!("adr.dir must be relative to the configuration file");
+    validate_relative(dir, "adr.dir")
+}
+
+fn validate_relative(path: &Path, field: &str) -> Result<()> {
+    if path.is_absolute() {
+        bail!("{field} must be relative to the configuration file");
     }
-    if dir
+    if path
         .components()
         .any(|component| matches!(component, Component::ParentDir | Component::RootDir))
     {
-        bail!("adr.dir must not escape the project root");
+        bail!("{field} must not escape the project root");
     }
-    if dir.as_os_str().is_empty() {
-        bail!("adr.dir must not be empty");
+    if path.as_os_str().is_empty() {
+        bail!("{field} must not be empty");
     }
     Ok(())
 }
@@ -130,6 +184,12 @@ dir = "{}"
 start = {}
 # Only for imported histories that legitimately start with holes.
 allow_gaps = false
+
+# Accepted decisions are immutable once locked. Presence of the manifest is what opts in.
+[lock]
+enabled = true
+path = "adrlint.lock"
+statuses = ["accepted", "rejected"]
 "#,
         dir, start
     )
@@ -146,6 +206,7 @@ mod tests {
                 start: 2,
                 ..AdrConfig::default()
             },
+            ..Config::default()
         };
         let error = validate(&config).unwrap_err().to_string();
         assert!(error.contains("adr.start must be 0 or 1"));
@@ -158,6 +219,7 @@ mod tests {
                 dir: PathBuf::from("../adr"),
                 ..AdrConfig::default()
             },
+            ..Config::default()
         };
         let error = validate(&config).unwrap_err().to_string();
         assert!(error.contains("must not escape"));
@@ -170,6 +232,7 @@ mod tests {
                 dir: std::env::temp_dir().join("adr"),
                 ..AdrConfig::default()
             },
+            ..Config::default()
         };
         let error = validate(&config).unwrap_err().to_string();
         assert!(error.contains("must be relative"));

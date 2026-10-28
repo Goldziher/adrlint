@@ -7,7 +7,10 @@ use std::process::ExitCode;
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 
-use adrlint::cli::{Cli, Command, InitArgs, LintArgs, NewArgs};
+use adrlint::adr::{self, Document};
+use adrlint::cli::{Cli, Command, InitArgs, LintArgs, LockArgs, NewArgs, UnlockArgs};
+use adrlint::lock::{self, LockFile};
+use adrlint::report::OutputFormat;
 use adrlint::{config, diagnostics, discovery, report, rules, template};
 
 fn main() -> ExitCode {
@@ -32,20 +35,14 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Command::Lint(args) => lint(config, args, !no_color),
         Command::Init(args) => init(config, args),
         Command::New(args) => new(config, args),
+        Command::Lock(args) => lock_command(config, args),
+        Command::Unlock(args) => unlock_command(config, args),
     }
 }
 
 fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitCode> {
     let loaded = config::load(config_path)?;
-    let directories = resolve_directories(&args.paths, &loaded)?;
-
-    let mut findings = Vec::new();
-    for directory in directories {
-        let scanned =
-            discovery::scan(&directory).with_context(|| format!("reading ADR directory {}", directory.display()))?;
-        findings.extend(rules::check_directory(&scanned, &loaded.config.adr));
-    }
-    diagnostics::sort(&mut findings);
+    let (findings, _) = collect(&loaded, &args.paths, true)?;
     report::print(&findings, args.format, color)?;
 
     if diagnostics::has_errors(&findings) {
@@ -53,6 +50,56 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
     } else {
         Ok(ExitCode::SUCCESS)
     }
+}
+
+type LintResult = (Vec<diagnostics::Diagnostic>, Vec<(PathBuf, Document)>);
+
+/// Lints every ADR reachable from `paths`, returning the findings and the parsed documents.
+fn collect(loaded: &config::Loaded, paths: &[PathBuf], check_lock: bool) -> Result<LintResult> {
+    let directories = resolve_directories(paths, loaded)?;
+    let mut findings = Vec::new();
+    let mut documents = Vec::new();
+
+    for directory in directories {
+        let scanned =
+            discovery::scan(&directory).with_context(|| format!("reading ADR directory {}", directory.display()))?;
+        findings.extend(rules::check_directory(&scanned, &loaded.config.adr));
+        for file in &scanned.adrs {
+            let source =
+                fs::read_to_string(&file.path).with_context(|| format!("reading ADR {}", file.path.display()))?;
+            let document = adr::parse(&source);
+            findings.extend(rules::check_structure(&document, &file.path));
+            documents.push((file.path.clone(), document));
+        }
+    }
+
+    if check_lock && loaded.config.lock.enabled {
+        let manifest = lock::load(&lock_path(loaded))?;
+        if manifest.is_current() {
+            for (path, document) in &documents {
+                let key = lock::key(&loaded.root, path);
+                if let Some(entry) = manifest.entry(&key)
+                    && let Some(diagnostic) = lock::verify(document, Some(entry), path)
+                {
+                    findings.push(diagnostic);
+                }
+            }
+        } else {
+            eprintln!(
+                "adrlint: {} uses canonical version {}; run `adrlint lock --all` to refresh it",
+                lock_path(loaded).display(),
+                manifest.canonical
+            );
+        }
+        findings.extend(lock::missing_entries(&manifest, &loaded.root));
+    }
+
+    diagnostics::sort(&mut findings);
+    Ok((findings, documents))
+}
+
+fn lock_path(loaded: &config::Loaded) -> PathBuf {
+    loaded.root.join(&loaded.config.lock.path)
 }
 
 fn resolve_directories(paths: &[PathBuf], loaded: &config::Loaded) -> Result<Vec<PathBuf>> {
@@ -149,6 +196,107 @@ fn new(config_path: Option<&Path>, args: NewArgs) -> Result<ExitCode> {
     let path = directory.join(name);
     write_new(&path, &template::render(title, "proposed"))?;
     println!("created {}", path.display());
+    Ok(ExitCode::SUCCESS)
+}
+
+fn lock_command(config_path: Option<&Path>, args: LockArgs) -> Result<ExitCode> {
+    let loaded = config::load(config_path)?;
+    if !loaded.config.lock.enabled {
+        bail!("locking is disabled in the configuration; set lock.enabled = true to use it");
+    }
+
+    let (findings, documents) = collect(&loaded, &args.paths, true)?;
+    if diagnostics::has_errors(&findings) {
+        report::print(&findings, OutputFormat::Text, true)?;
+        if args.check {
+            return Ok(ExitCode::from(1));
+        }
+        let errors = findings.iter().filter(|finding| finding.severity.is_error()).count();
+        bail!("refusing to lock: fix {errors} error(s) first");
+    }
+
+    let manifest_path = lock_path(&loaded);
+    let existing = lock::load(&manifest_path)?;
+    if !existing.is_current() && (!args.all || !args.paths.is_empty()) {
+        bail!(
+            "{} uses canonical version {}; run `adrlint lock --all` without paths to re-lock every ADR",
+            manifest_path.display(),
+            existing.canonical
+        );
+    }
+
+    let mut candidate = existing.clone();
+    candidate.version = lock::LOCK_VERSION;
+    candidate.canonical = lock::CANONICAL_VERSION;
+    let mut locked = 0;
+    for (path, document) in &documents {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(number) = discovery::parse_number(name) else {
+            continue;
+        };
+        let status = lock::status(document);
+        if !args.all && !config::is_locked_status(&loaded.config.lock, &status) {
+            continue;
+        }
+        candidate.insert(lock::key(&loaded.root, path), lock::entry(document, number));
+        locked += 1;
+    }
+
+    if locked == 0 && existing.adrs.is_empty() {
+        bail!("no ADRs matched lock.statuses; pass --all to lock every ADR");
+    }
+
+    if args.check {
+        if candidate == existing {
+            println!("{} is up to date", manifest_path.display());
+            return Ok(ExitCode::SUCCESS);
+        }
+        report_lock_changes(&existing, &candidate);
+        return Ok(ExitCode::from(1));
+    }
+
+    lock::save(&manifest_path, &candidate)?;
+    println!("locked {locked} ADR(s) in {}", manifest_path.display());
+    Ok(ExitCode::SUCCESS)
+}
+
+fn report_lock_changes(existing: &LockFile, candidate: &LockFile) {
+    for (key, entry) in &candidate.adrs {
+        match existing.entry(key) {
+            None => eprintln!("would add {key}"),
+            Some(current) if current != entry => eprintln!("would update {key}"),
+            Some(_) => {}
+        }
+    }
+    for key in existing.adrs.keys() {
+        if candidate.entry(key).is_none() {
+            eprintln!("would remove {key}");
+        }
+    }
+}
+
+fn unlock_command(config_path: Option<&Path>, args: UnlockArgs) -> Result<ExitCode> {
+    let reason = args.reason.trim();
+    if reason.is_empty() {
+        bail!("--reason must not be empty");
+    }
+
+    let loaded = config::load(config_path)?;
+    let manifest_path = lock_path(&loaded);
+    let mut manifest = lock::load(&manifest_path)?;
+    let path = if args.path.is_absolute() {
+        args.path
+    } else {
+        loaded.root.join(&args.path)
+    };
+    let key = lock::key(&loaded.root, &path);
+    if !lock::unlock(&mut manifest, &key) {
+        bail!("no lock entry for {}; expected manifest key '{}'", path.display(), key);
+    }
+    lock::save(&manifest_path, &manifest)?;
+    println!("unlocked {key}: {reason}");
     Ok(ExitCode::SUCCESS)
 }
 

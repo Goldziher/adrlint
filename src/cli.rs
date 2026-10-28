@@ -32,6 +32,10 @@ pub enum Command {
     Init(InitArgs),
     /// Create the next sequential ADR
     New(NewArgs),
+    /// Record canonical content hashes for accepted ADRs
+    Lock(LockArgs),
+    /// Remove one ADR from the immutability manifest
+    Unlock(UnlockArgs),
 }
 
 #[derive(Debug, Args)]
@@ -65,4 +69,30 @@ pub struct NewArgs {
     /// Title of the decision record
     #[arg(value_name = "TITLE")]
     pub title: String,
+}
+
+#[derive(Debug, Args)]
+pub struct LockArgs {
+    /// Files or directories to lock; defaults to the configured ADR directory
+    #[arg(value_name = "PATH")]
+    pub paths: Vec<PathBuf>,
+
+    /// Verify the manifest without writing it
+    #[arg(long)]
+    pub check: bool,
+
+    /// Lock every ADR, including proposed and withdrawn ones
+    #[arg(long)]
+    pub all: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct UnlockArgs {
+    /// ADR path, as stored in the manifest
+    #[arg(value_name = "PATH")]
+    pub path: PathBuf,
+
+    /// Why the record is being unlocked; goes into the commit message
+    #[arg(long, value_name = "TEXT")]
+    pub reason: String,
 }
