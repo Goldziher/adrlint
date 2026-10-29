@@ -210,3 +210,45 @@ fn should_refuse_to_lock_a_log_reached_through_a_symlink_outside_the_root() {
     );
     assert!(!directory.path().join("adrlint.lock").exists());
 }
+
+/// Runs adrlint under a pseudo-terminal with `script`, so colour is decided by the flag alone.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn run_in_terminal(directory: &Path, args: &[&str]) -> String {
+    let binary = env!("CARGO_BIN_EXE_adrlint");
+    let mut command = Command::new("script");
+    if cfg!(target_os = "macos") {
+        command.args(["-q", "/dev/null", binary]).args(args);
+    } else {
+        let line = std::iter::once(binary)
+            .chain(args.iter().copied())
+            .map(|part| format!("'{part}'"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        command.args(["-qec", &line, "/dev/null"]);
+    }
+    let output = command
+        .current_dir(directory)
+        .env_remove("NO_COLOR")
+        .output()
+        .expect("running script");
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn should_honour_no_color_when_lock_reports_errors() {
+    let directory = TempDir::new().unwrap();
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/adr/invalid/MADR41a");
+    let fixtures = fixtures.to_str().expect("a UTF-8 path");
+
+    let coloured = run_in_terminal(directory.path(), &["lock", fixtures]);
+    assert!(coloured.contains("[MADR41a]"), "{coloured}");
+    assert!(
+        coloured.contains('\u{1b}'),
+        "a terminal gets colour by default: {coloured:?}"
+    );
+
+    let plain = run_in_terminal(directory.path(), &["--no-color", "lock", fixtures]);
+    assert!(plain.contains("[MADR41a]"), "{plain}");
+    assert!(!plain.contains('\u{1b}'), "--no-color must disable colour: {plain:?}");
+}

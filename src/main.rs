@@ -45,7 +45,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Command::Format(args) => format_command(config, args),
         Command::Init(args) => init(config, args),
         Command::New(args) => new(config, args),
-        Command::Lock(args) => lock_command(config, args),
+        Command::Lock(args) => lock_command(config, args, !no_color),
         Command::Unlock(args) => unlock_command(config, args),
     }
 }
@@ -852,7 +852,7 @@ fn truncate_slug(slug: &str) -> &str {
     &slug[..boundary]
 }
 
-fn lock_command(config_path: Option<&Path>, args: LockArgs) -> Result<ExitCode> {
+fn lock_command(config_path: Option<&Path>, args: LockArgs, color: bool) -> Result<ExitCode> {
     let loaded = config::load(config_path)?;
     if !loaded.config.lock.enabled {
         bail!("locking is disabled in the configuration; set lock.enabled = true to use it");
@@ -867,7 +867,7 @@ fn lock_command(config_path: Option<&Path>, args: LockArgs) -> Result<ExitCode> 
     } = collect(&loaded, &directories, true)?;
     show_paths(&mut findings);
     if diagnostics::has_errors(&findings) {
-        report::print(&findings, OutputFormat::Text, true)?;
+        report::print(&findings, OutputFormat::Text, color)?;
         if args.check {
             return Ok(ExitCode::from(1));
         }
