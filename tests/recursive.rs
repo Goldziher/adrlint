@@ -691,3 +691,34 @@ fn should_expand_a_configured_glob_under_a_root_with_brackets() {
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     assert!(stderr(&output).contains("2 files checked"), "{}", stderr(&output));
 }
+
+#[test]
+fn should_discover_logs_of_three_and_five_digit_names_and_report_them() {
+    let directory = project();
+    write_adr(directory.path(), "adrs/short/001-a.md");
+    write_adr(directory.path(), "adrs/long/00001-b.md");
+    write_adr(directory.path(), "docs/plans/2026-07-01-design.md");
+
+    let output = lint_json(&directory, &["--recursive", "."]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    let found = diagnostics(&output);
+    for name in ["adrs/short/001-a.md", "adrs/long/00001-b.md"] {
+        assert!(
+            found.iter().any(|finding| {
+                finding["code"] == "MADR44"
+                    && finding["path"]
+                        .as_str()
+                        .is_some_and(|path| path.replace('\\', "/").ends_with(name))
+            }),
+            "{name} must reach MADR44: {}",
+            stdout(&output)
+        );
+    }
+    assert!(
+        !found
+            .iter()
+            .any(|finding| finding["path"].as_str().is_some_and(|path| path.contains("2026-07-01"))),
+        "{}",
+        stdout(&output)
+    );
+}

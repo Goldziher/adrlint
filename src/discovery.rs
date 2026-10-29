@@ -72,17 +72,21 @@ pub fn parse_number(name: &str) -> Option<u32> {
     name[..4].parse().ok()
 }
 
-/// Whether a file name claims a place in an ADR log: Markdown with a `NNNN-` prefix that is not a date.
+/// Whether a file name claims a place in an ADR log: Markdown with a numeric prefix that is not a date.
 ///
-/// The prefix alone decides, so a malformed name such as `0001_use_rust.md` still belongs to the log
-/// and reaches `MADR44`. A dated document such as `2026-07-01-design.md` (plans, specs, meeting notes)
-/// does not: its `YYYY-MM-DD-` prefix is a date, not a decision number.
+/// The prefix alone decides, so a malformed name such as `0001_use_rust.md`, `001-use-rust.md` or
+/// `00001-use-rust.md` still belongs to the log and reaches `MADR44`. The prefix is four or more digits,
+/// or three digits followed by `-` or `_`, so `404.md` is not an ADR. A dated document such as
+/// `2026-07-01-design.md` (plans, specs, meeting notes) does not belong either: its `YYYY-MM-DD-`
+/// prefix is a date, not a decision number.
 pub fn is_numbered(name: &str) -> bool {
-    let bytes = name.as_bytes();
-    if !name.ends_with(".md") || bytes.len() < 5 || !bytes[..4].iter().all(u8::is_ascii_digit) {
+    let Some(stem) = name.strip_suffix(".md") else {
         return false;
-    }
-    !is_dated(bytes)
+    };
+    let bytes = stem.as_bytes();
+    let digits = bytes.iter().take_while(|byte| byte.is_ascii_digit()).count();
+    let prefixed = digits >= 4 || (digits == 3 && matches!(bytes.get(3), Some(b'-' | b'_')));
+    prefixed && !is_dated(bytes)
 }
 
 fn is_dated(bytes: &[u8]) -> bool {
@@ -147,6 +151,10 @@ mod tests {
         assert!(is_numbered("0001-use-rust.md"));
         assert!(is_numbered("0001_use_rust.md"));
         assert!(is_numbered("2026-use-rust.md"));
+        assert!(is_numbered("001-use-rust.md"));
+        assert!(is_numbered("00001-use-rust.md"));
+        assert!(is_numbered("001_use_rust.md"));
+        assert!(is_numbered("0001.md"));
     }
 
     #[test]
@@ -155,6 +163,8 @@ mod tests {
         assert!(!is_numbered("README.md"));
         assert!(!is_numbered("adr-template.md"));
         assert!(!is_numbered("0001-use-rust.txt"));
+        assert!(!is_numbered("01-use-rust.md"));
+        assert!(!is_numbered("404.md"));
     }
 
     #[test]

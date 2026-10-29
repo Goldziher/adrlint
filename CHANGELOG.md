@@ -69,6 +69,8 @@ All notable changes to this project are documented in this file.
   canonical content: an ADR that already drifted can still be reflowed, and a manifest from another
   canonical version no longer lets a content-changing fix through without `--force`.
 
+- A log made only of three-digit (`001-x.md`) or five-digit (`00001-x.md`) names is discovered,
+  so its files reach `MADR44` instead of being skipped.
 - A date-prefixed document (`2026-07-01-design.md`) no longer makes its directory an ADR log, so
   `--recursive .` stops reporting plans and specs as ADRs.
 - A Markdown file passed explicitly that is not an ADR and sits outside any ADR log (`adrs/README.md`,
