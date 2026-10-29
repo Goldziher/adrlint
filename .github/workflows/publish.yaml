@@ -556,7 +556,7 @@ jobs:
     if: needs.verify.result == 'success' && needs.finalize_release.result == 'success' && needs.meta.outputs.release_assets_exist != 'true'
     permissions:
       contents: read
-    uses: xberg-io/actions/.github/workflows/reusable-binstall-verify.yml@7bb3390acdfa67fe900d36d3eba1e2bca2032ef7 # v1.24.1
+    uses: xberg-io/actions/.github/workflows/reusable-binstall-verify.yml@793d3a4d37a17009d91cce29f2825eda570d2abd # v1.27.1
     with:
       package-name: adrlint
       binary-name: adrlint
