@@ -63,3 +63,38 @@ fn should_keep_a_rule_as_an_error_by_default() {
         .args(["lint", "--format", "json"]));
     assert_eq!(output.status.code(), Some(1));
 }
+
+#[test]
+fn should_warn_about_a_rule_key_that_matches_nothing() {
+    let (directory, _) =
+        setup("[adr]\ndir = \"docs/adr\"\n\n[markdown]\nenabled = false\n\n[rules]\nMADR99 = \"off\"\n");
+    let output = run(adrlint()
+        .current_dir(directory.path())
+        .args(["lint", "--format", "json"]));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("MADR99") && stderr.contains("matches no implemented rule"),
+        "a typo must not be a silent no-op: {stderr}"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "the unrelated MADR05 finding still fails the run"
+    );
+}
+
+#[test]
+fn should_not_warn_about_a_key_that_prefixes_an_implemented_rule() {
+    let (directory, _) =
+        setup("[adr]\ndir = \"docs/adr\"\n\n[markdown]\nenabled = false\n\n[rules]\nMADR05 = \"warn\"\n");
+    let output = run(adrlint()
+        .current_dir(directory.path())
+        .args(["lint", "--format", "json"]));
+
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).contains("matches no implemented rule"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

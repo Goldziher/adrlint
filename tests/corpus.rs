@@ -115,7 +115,7 @@ fn is_known_code(code: &str) -> bool {
     let madr = [
         "MADR01a", "MADR01b", "MADR01c", "MADR01d", "MADR02", "MADR03a", "MADR03b", "MADR04", "MADR05", "MADR06",
         "MADR07a", "MADR07b", "MADR08a", "MADR08b", "MADR12a", "MADR12b", "MADR12c", "MADR12d", "MADR21", "MADR31",
-        "MADR41a", "MADR41b", "MADR42", "MADR43", "MADR44", "ADR50", "ADR51",
+        "MADR41a", "MADR41b", "MADR42", "MADR43", "MADR44", "ADR50", "ADR51", "ADR52",
     ];
     if madr.contains(&code) {
         return true;
@@ -503,10 +503,9 @@ fn snapshot(root: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
     files
 }
 
-/// The current CLI aborts the whole run with exit code 2 on the first non-UTF-8 ADR, so this test
-/// documents the contract the release needs and stays ignored until the reader reports the file.
+/// A file that is not valid UTF-8 is reported as `ADR52` and the rest of the directory is still
+/// linted, so one corrupt file cannot hide every other finding.
 #[test]
-#[ignore = "defect: lint exits 2 on a non-UTF-8 ADR instead of reporting it and continuing"]
 fn should_reject_non_utf8_adrs_without_aborting_the_run() {
     let temp = TempDir::new().expect("temporary directory");
     let good = temp.path().join("0001-use-postgresql.md");

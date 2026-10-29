@@ -40,8 +40,8 @@ adrlint is built to check all four in one run, from one parse, with one exit cod
 adrlint is at **0.1.0** and under active construction. The implemented surface is:
 
 - `adrlint lint` — `MADR01`–`MADR08` structural rules, `MADR12`/`MADR21`/`MADR31` integrity and
-  style rules, `MADR41`–`MADR44` directory rules, `ADR50`/`ADR51` immutability checks, and rumdl's
-  `MD###` Markdown rules
+  style rules, `MADR41`–`MADR44` directory rules, `ADR50`–`ADR52` immutability and readability
+  checks, and rumdl's `MD###` Markdown rules
 - `adrlint format` — rumdl's fixes, with `--check` for CI
 - `adrlint init` — writes `.adrlint.toml` and a starter ADR
 - `adrlint new "<title>"` — creates the next sequential ADR
@@ -196,7 +196,7 @@ trail. The ADR itself is not modified.
 ## Rules
 
 Every MADR rule except external link checking (`MADR11`, opt-in and network-dependent) is
-implemented in 0.1.0, along with `ADR50`/`ADR51` and the rumdl `MD###` rules.
+implemented in 0.1.0, along with `ADR50`–`ADR52` and the rumdl `MD###` rules.
 
 Rule IDs are public API. Suppressing or re-severitying one in `.adrlint.toml` must keep working across
 releases; a new check gets a new ID.
@@ -252,12 +252,13 @@ releases; a new check gets a new ID.
 | `MADR43`  | No two ADRs share a number                   |
 | `MADR44`  | File names match `NNNN-brief-description.md` |
 
-### adrlint (`ADR50`–`ADR51`)
+### adrlint (`ADR50`–`ADR52`)
 
 | ID      | Check                                                   |
 | ------- | ------------------------------------------------------- |
 | `ADR50` | A locked ADR's content hash differs from `adrlint.lock` |
 | `ADR51` | A locked ADR is missing from disk                       |
+| `ADR52` | An ADR cannot be read, or is not valid UTF-8            |
 
 ### Markdown (`MD###`)
 
@@ -339,7 +340,8 @@ blake3 = "…"
   consumer's build.
 
 The manifest is committed. It is reviewed like source; `ADR50` and `ADR51` are the only findings a
-change to it can produce.
+change to it can produce. `ADR52` is separate: it reports a file that cannot be read at all, and the
+run continues so one corrupt file cannot hide every other finding.
 
 ## Sequentiality
 

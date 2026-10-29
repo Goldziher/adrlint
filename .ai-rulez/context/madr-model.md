@@ -55,6 +55,7 @@ Chosen option: "<option>", because <rationale>
 - `MADR31` — `*` as the list marker
 - `MADR41`–`MADR44` — directory numbering, naming and foreign files
 - `ADR50`–`ADR51` — adrlint-specific immutability rules
+- `ADR52` — an ADR cannot be read, or is not valid UTF-8
 - `MD###` — rumdl Markdown rules, reported verbatim
 
 An ID is public API: renaming one breaks suppressions in user configuration. Add a new ID instead of

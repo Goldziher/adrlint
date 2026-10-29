@@ -47,6 +47,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
 
 fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitCode> {
     let loaded = config::load(config_path)?;
+    report_unknown_rule_keys(&loaded);
     let (findings, _, stale) = collect(&loaded, &args.paths, true)?;
     if let Some(canonical) = stale {
         report_stale_lock(&lock_path(&loaded), canonical);
@@ -78,13 +79,20 @@ fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCo
     let directories = resolve_directories(&args.paths, &loaded)?;
     let mut changed = Vec::new();
     let mut refused = Vec::new();
+    let mut failed = false;
 
     for directory in directories {
         let scanned =
             discovery::scan(&directory).with_context(|| format!("reading ADR directory {}", directory.display()))?;
         for file in &scanned.adrs {
-            let source =
-                fs::read_to_string(&file.path).with_context(|| format!("reading ADR {}", file.path.display()))?;
+            let source = match read_adr(&file.path) {
+                Ok(source) => source,
+                Err(finding) => {
+                    eprintln!("adrlint: {}: {}", finding.path.display(), finding.message);
+                    failed = true;
+                    continue;
+                }
+            };
             let formatted = markdown::format(&source, &file.path, &loaded.config.markdown)?;
             if formatted == source {
                 continue;
@@ -114,7 +122,7 @@ fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCo
         }
     }
 
-    if !refused.is_empty() || (args.check && !changed.is_empty()) {
+    if failed || !refused.is_empty() || (args.check && !changed.is_empty()) {
         return Ok(ExitCode::from(1));
     }
     Ok(ExitCode::SUCCESS)
@@ -149,8 +157,13 @@ fn collect(loaded: &config::Loaded, paths: &[PathBuf], check_lock: bool) -> Resu
             discovery::scan(&directory).with_context(|| format!("reading ADR directory {}", directory.display()))?;
         findings.extend(rules::check_directory(&scanned, &loaded.config.adr));
         for file in &scanned.adrs {
-            let source =
-                fs::read_to_string(&file.path).with_context(|| format!("reading ADR {}", file.path.display()))?;
+            let source = match read_adr(&file.path) {
+                Ok(source) => source,
+                Err(finding) => {
+                    findings.push(finding);
+                    continue;
+                }
+            };
             let document = adr::parse(&source);
             findings.extend(rules::check_document(&document, &file.path, &loaded.root));
             findings.extend(markdown::check(&source, &file.path, &loaded.config.markdown));
@@ -178,6 +191,24 @@ fn collect(loaded: &config::Loaded, paths: &[PathBuf], check_lock: bool) -> Resu
     rules::apply_overrides(&mut findings, &loaded.config.rules);
     diagnostics::sort(&mut findings);
     Ok((findings, documents, stale))
+}
+
+/// Warns once about `[rules]` and `[markdown.rules]` keys that cannot match a finding.
+///
+/// A typo is otherwise a silent no-op: the run looks clean while the intended override is ignored.
+fn report_unknown_rule_keys(loaded: &config::Loaded) {
+    for key in rules::unknown_rule_keys(&loaded.config.rules, &loaded.config.markdown.rules) {
+        eprintln!("adrlint: warning: rule key {key:?} matches no implemented rule");
+    }
+}
+
+/// Reads an ADR, turning an IO or UTF-8 failure into a finding instead of aborting the whole run.
+fn read_adr(path: &Path) -> std::result::Result<String, diagnostics::Diagnostic> {
+    let bytes = fs::read(path)
+        .map_err(|error| diagnostics::Diagnostic::error("ADR52", path, 1, format!("cannot read the ADR: {error}")))?;
+    String::from_utf8(bytes).map_err(|error| {
+        diagnostics::Diagnostic::error("ADR52", path, 1, format!("the ADR is not valid UTF-8: {error}"))
+    })
 }
 
 /// Reports a manifest written by another canonical serializer version exactly once.

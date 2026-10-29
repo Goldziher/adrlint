@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.9.2'
 scope = 'all'
-tree = 'sha256:6a3b704278e19a9d362331eb6eeae6ca0f526b5a7694f19d3d599957e2a0f4b0'
+tree = 'sha256:9e6ab632ec013eaba40b013c90551031753395df99df73a6873c75e937c8ef36'
 
 [[served]]
 name = 'build'
@@ -160,7 +160,7 @@ digest = 'sha256:375729c51be73fc894785033d604e030564c44e9d3fc1814f7c1f1b8fe1fe6e
 kind = 'context'
 id = 'madr-model'
 path = 'context/madr-model.md'
-digest = 'sha256:cca464f7fad34664428c1c02201ac2d3d456c3c95a3336dfccc63a6ac6d3eaf1'
+digest = 'sha256:a590322f8ebdc1b617e47ec876ed68cbf6818a25eb80c09c5d1ac6850647a1bd'
 
 [[item]]
 kind = 'context'

@@ -14,7 +14,8 @@ All notable changes to this project are documented in this file.
   markers. External link checking is the remaining MADR rule and stays opt-in.
 - rumdl 0.3 linked in-process for `MD###` findings, and `adrlint format` with `--check`. Markdown
   findings are errors by default and can be downgraded per rule.
-- `ADR50` / `ADR51` immutability rules and `adrlint lock` / `adrlint unlock`.
+- `ADR50` / `ADR51` immutability rules, `ADR52` for an unreadable or non-UTF-8 ADR, and
+  `adrlint lock` / `adrlint unlock`.
 - `adrlint.lock` hashes a canonical content serialization, not raw or formatted bytes; list markers,
   heading style, line wrapping, CRLF, code-fence info strings and reordered front matter keys do not
   break a lock.
