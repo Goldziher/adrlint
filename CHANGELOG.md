@@ -55,6 +55,8 @@ All notable changes to this project are documented in this file.
 - A path that exists is read literally even if it holds `[`, and GitHub annotations escape `:` and `,`
   in file names. Text and GitHub spans end at the end of the line's content.
 - `lint --fix` exits 1 when it refused to change a locked ADR.
+- A manifest from another canonical version no longer reports `ADR51` for missing files: a stale
+  manifest verifies nothing until `adrlint lock --all` refreshes it.
 - A `[rules]` key naming a rumdl code (`MD009 = "off"`) is no longer reported as matching no rule,
   since it does apply; a `[markdown.rules]` key is checked against rumdl's actual rule codes, so
   `MD999` is reported.

@@ -344,10 +344,11 @@ fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -
                     findings.push(diagnostic);
                 }
             }
+            findings.extend(lock::missing_entries(&manifest, &loaded.root));
         } else {
+            // A stale manifest verifies nothing until it is refreshed, missing files included.
             stale = Some(manifest.canonical);
         }
-        findings.extend(lock::missing_entries(&manifest, &loaded.root));
     }
 
     rules::apply_overrides(&mut findings, &loaded.config.rules);

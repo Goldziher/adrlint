@@ -348,3 +348,23 @@ fn should_truncate_a_long_slug_at_a_hyphen() {
     assert!(slug.len() <= 80, "slug is {} bytes: {slug}", slug.len());
     assert!(!slug.ends_with('-'), "the truncation lands on a hyphen boundary");
 }
+
+#[test]
+fn should_verify_nothing_against_a_stale_lock() {
+    let (directory, _) = scaffold();
+    let output = run(adrlint().current_dir(directory.path()).arg("lock"));
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    let manifest_path = directory.path().join("adrlint.lock");
+    let manifest = fs::read_to_string(&manifest_path).expect("reading the lock file");
+    let aged = manifest
+        .replace("canonical = 1", "canonical = 999")
+        .replace("0001-record-architecture-decisions.md", "0009-gone.md");
+    assert_ne!(aged, manifest);
+    fs::write(&manifest_path, aged).expect("ageing the lock");
+
+    let output = run(adrlint().current_dir(directory.path()).arg("lint"));
+    assert!(!stdout(&output).contains("[ADR51]"), "{}", stdout(&output));
+    assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
+    assert!(stderr(&output).contains("canonical version 999"), "{}", stderr(&output));
+}
