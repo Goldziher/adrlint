@@ -1,0 +1,6 @@
+This directory contains Architecture Decision Records copied unmodified from
+https://github.com/thomvaill/log4brains at commit
+17e32021a8c5130386f17e921d4efa6da7709a66, for testing adrlint.
+
+The originals are licensed under the Apache License, Version 2.0; see LICENSE in this directory.
+The files are test data and are not modified, reformatted or redistributed as part of adrlint.
