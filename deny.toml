@@ -22,9 +22,16 @@ confidence-threshold = 0.8
 exceptions = [{ allow = ["MPL-2.0"], crate = "option-ext" }, { allow = ["LGPL-2.1-or-later"], crate = "r-efi" }]
 
 [advisories]
-# rumdl reads `.markdownlint.yaml` through serde_yaml, which is built on the archived
-# unsafe-libyaml. The advisory is informational — the crate is unmaintained, not known
-# vulnerable — and adrlint never parses YAML through it: the front matter parse is
-# saphyr, and this path is only reachable from a rumdl configuration file that adrlint
-# does not load. Drop this ignore when rumdl moves off serde_yaml.
+# rumdl vendors serde_yaml (built on the archived unsafe-libyaml), and adrlint reaches none of
+# its parsing paths at runtime:
+#   * MD074 (mkdocs-nav) parses mkdocs.yml with serde_yaml, but the rule only runs when the
+#     markdown flavor is MkDocs, and adrlint sets nothing but `file_path`, so the flavor stays
+#     Standard.
+#   * MD072 (frontmatter-key-sort) references serde_yaml only from its own tests, and the rule is
+#     opt-in: `filter_rules` drops every opt-in rule because adrlint configures no `enable` or
+#     `extend-enable` set.
+# rumdl also reads `.markdownlint.yaml` through serde_yaml when it discovers a config file, which
+# adrlint never does: it builds `RumdlConfig::default()` in process with no file discovery.
+# The advisory is informational — unsafe-libyaml is unmaintained, not known vulnerable.
+# Drop this ignore once rumdl moves off serde_yaml.
 ignore = ["RUSTSEC-2024-0449"]
