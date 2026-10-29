@@ -30,13 +30,18 @@ All notable changes to this project are documented in this file.
 - Directories are listed and ADRs checked in parallel, each file is read once and the Markdown rule
   set is built once per worker thread; output is sorted and exact duplicates are dropped, so it is
   byte-identical across runs.
-- Discovery walks once: the directories found for zero-config runs are reused, and overlapping
-  recursive roots are merged. A path the walk cannot read is a stderr warning instead of an abort.
+- Discovery walks once: the directories found for zero-config runs are reused, and the directories
+  of overlapping recursive roots are merged. A path the walk cannot read is a stderr warning instead of an abort.
 - An ADR larger than 16 MiB is reported as `ADR52` instead of being parsed.
 - Discovery walks the project in parallel and honours `.gitignore` (plus hidden directories,
   `target` and `node_modules`), so a monorepo root takes about two seconds instead of ten.
 
 ### Fixed
+
+- `lint --fix` plans every file before writing any, so a file it cannot fix leaves the tree untouched,
+  and it rewrites only numbered ADRs, never a README or template inside a log.
+- A file a hook passes that the commit deletes lints the log it leaves instead of aborting the run.
+- A recursive root with no ADR log under it is reported instead of passing with nothing checked.
 
 - A date-prefixed document (`2026-07-01-design.md`) no longer makes its directory an ADR log, so
   `--recursive .` stops reporting plans and specs as ADRs.

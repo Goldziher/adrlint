@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -152,15 +152,21 @@ fn apply_fixes(loaded: &config::Loaded, directories: &[PathBuf], mode: &FixMode)
         LockFile::default()
     };
     let scanned = scan_all(directories)?;
+    // Only numbered ADRs are rewritten: a README or template inside a log is reported, never changed.
     let files = scanned
         .iter()
         .flat_map(|directory| directory.adrs.iter())
+        .filter(|file| discovery::is_numbered(&file.name))
         .collect::<Vec<_>>();
-    let planned = parallel::map(&files, |file| plan_fix(loaded, &manifest, mode, &file.path));
+    // Every plan is computed before anything is written, so one file that cannot be fixed leaves the
+    // whole tree untouched instead of half rewritten.
+    let planned = parallel::map(&files, |file| plan_fix(loaded, &manifest, mode, &file.path))
+        .into_iter()
+        .collect::<Result<Vec<_>>>()?;
 
     let mut outcome = FixOutcome::default();
     for (file, plan) in files.iter().zip(planned) {
-        match plan? {
+        match plan {
             Planned::Unchanged => {}
             Planned::Unreadable(finding) => {
                 eprintln!("adrlint: {}: {}", finding.path.display(), finding.message);
@@ -392,40 +398,24 @@ fn resolve_directories(paths: &[PathBuf], loaded: &config::Loaded, recursive: bo
     if !recursive {
         return Ok(resolved.into_iter().collect::<BTreeSet<_>>().into_iter().collect());
     }
+    // Every root is walked: a nested root may sit under a directory another root's walk ignores, so
+    // pruning by path would drop it. The directory set removes the overlap.
+    let roots = resolved.into_iter().collect::<BTreeSet<_>>();
     let mut directories = BTreeSet::new();
-    for root in prune_nested(resolved) {
-        directories.extend(descend(&root));
+    for root in &roots {
+        directories.extend(descend(root));
+    }
+    if directories.is_empty() && !paths.is_empty() {
+        bail!(
+            "no ADR log found under {} (no directory there holds a NNNN-*.md file)",
+            roots
+                .iter()
+                .map(|root| root.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
     Ok(directories.into_iter().collect())
-}
-
-/// Drops duplicate roots and roots another root's recursive walk already reaches.
-///
-/// A root is covered when the path from the other root to it holds no hidden or skipped directory,
-/// because the walk would not enter one. A root under an ignored directory is therefore still walked
-/// on its own.
-fn prune_nested(mut roots: Vec<PathBuf>) -> Vec<PathBuf> {
-    roots.sort();
-    roots.dedup();
-    let mut kept: Vec<PathBuf> = Vec::new();
-    for root in roots {
-        if !kept.iter().any(|ancestor| is_reached_by(ancestor, &root)) {
-            kept.push(root);
-        }
-    }
-    kept
-}
-
-fn is_reached_by(ancestor: &Path, root: &Path) -> bool {
-    root.strip_prefix(ancestor).is_ok_and(|rest| {
-        rest.components().all(|component| match component {
-            Component::Normal(name) => {
-                let name = name.to_string_lossy();
-                !name.starts_with('.') && !SKIPPED_DIRECTORIES.contains(&name.as_ref())
-            }
-            _ => false,
-        })
-    })
 }
 
 /// One source as the user wrote it, plus the absolute form to read.
@@ -523,7 +513,23 @@ fn is_glob(path: &Path) -> bool {
 /// file that is not an ADR in a directory that is not an ADR log (`adrs/README.md`, an ADR template)
 /// belongs to no log and is skipped: a hook passes every changed Markdown file under `adrs/`.
 fn classify(path: &Path) -> Result<Option<PathBuf>> {
-    let metadata = fs::metadata(path).with_context(|| format!("reading path {}", path.display()))?;
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        // A hook can pass a file the commit deletes: lint the log it left, if there still is one.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let parent = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new("."));
+            if !parent.is_dir() || !contains_numbered_adr(parent)? {
+                return Ok(None);
+            }
+            return fs::canonicalize(parent)
+                .map(Some)
+                .with_context(|| format!("resolving {}", parent.display()));
+        }
+        Err(error) => return Err(error).with_context(|| format!("reading path {}", path.display())),
+    };
     let directory = if metadata.is_dir() {
         path.to_path_buf()
     } else {
@@ -569,6 +575,8 @@ fn descend(root: &Path) -> Vec<PathBuf> {
         .git_ignore(true)
         .git_global(false)
         .git_exclude(true)
+        .ignore(false)
+        .parents(false)
         .require_git(false)
         .follow_links(false)
         .filter_entry(|entry| {
@@ -899,28 +907,6 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn paths(values: &[&str]) -> Vec<PathBuf> {
-        values.iter().map(PathBuf::from).collect()
-    }
-
-    #[test]
-    fn should_drop_duplicate_and_nested_roots() {
-        let pruned = prune_nested(paths(&["/p/adrs/team", "/p/adrs", "/p/adrs", "/p/other"]));
-        assert_eq!(pruned, paths(&["/p/adrs", "/p/other"]));
-    }
-
-    #[test]
-    fn should_keep_a_root_the_outer_walk_would_not_enter() {
-        let pruned = prune_nested(paths(&["/p/adrs", "/p/adrs/node_modules/x", "/p/adrs/.hidden"]));
-        assert_eq!(pruned, paths(&["/p/adrs", "/p/adrs/.hidden", "/p/adrs/node_modules/x"]));
-    }
-
-    #[test]
-    fn should_not_treat_a_sibling_with_a_shared_prefix_as_nested() {
-        let pruned = prune_nested(paths(&["/p/adrs", "/p/adrs-old"]));
-        assert_eq!(pruned, paths(&["/p/adrs", "/p/adrs-old"]));
-    }
 
     #[test]
     fn should_report_an_oversized_adr_instead_of_reading_it() {

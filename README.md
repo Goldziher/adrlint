@@ -158,13 +158,15 @@ A Markdown file passed explicitly that is not an ADR and sits outside any ADR lo
 an ADR template) is skipped, so a hook can pass every changed file under `adrs/`.
 
 `--recursive` (or `[adr].recursive = true`) adds every descendant directory that directly contains a
-numbered ADR, skipping `.git`, `target`, `node_modules`, hidden directories and whatever `.gitignore`
-excludes. A date-prefixed document (`2026-07-01-design.md`) is not an ADR and does not make its
+numbered ADR, skipping `.git`, `target`, `node_modules`, hidden directories and whatever the project's
+`.gitignore` files exclude (`.ignore` files and `.gitignore` files above the project are not read).
+Symlinked directories are not followed. A date-prefixed document (`2026-07-01-design.md`) is not an ADR and does not make its
 directory a log. Numbering is still checked per ADR directory, so
 `adrs/team-a/0001.md` and `adrs/team-b/0001.md` are independent logs.
 
-Each root is walked once per invocation: overlapping roots (`adrs` and `adrs/team-a`) are merged,
-discovery hands the directories it found to the linter instead of walking again, and a directory or
+Each root is walked once per invocation and the directories found are merged, so overlapping roots
+(`adrs` and `adrs/team-a`) lint each log once; a root under a directory another root ignores is still
+walked. Discovery hands the directories it found to the linter instead of walking again, and a directory or
 file the walk cannot read is reported on stderr and skipped rather than aborting the run. Directories
 are listed and files are checked in parallel on every core, each file is read once, and results are
 merged in a fixed order, so the output is byte-identical from run to run.
@@ -496,7 +498,7 @@ registers a problem matcher so findings appear inline on the diff.
 1. **Discover** the ADR directory and parse each `NNNN-slug.md` into a directory model.
 2. **Parse** Markdown once with pulldown-cmark, retaining byte offsets and front matter.
 3. **Check** MADR structure and numbering from that model; run rumdl on the same source.
-4. **Merge** findings, deduplicate, sort, and report as text, JSON or GitHub annotations.
+4. **Merge** findings, drop exact duplicates, sort, and report as text, JSON or GitHub annotations.
 5. **Lock** by hashing a deterministic serialization of the document's content.
 
 Steps 1 to 3 run in parallel across directories and files. `lint` writes nothing unless you pass
