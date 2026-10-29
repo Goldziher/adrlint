@@ -60,6 +60,10 @@ pub struct FormatArgs {
     /// Report files that would change without writing them
     #[arg(long)]
     pub check: bool,
+
+    /// Write changes even when they alter the canonical content of a locked ADR
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Debug, Args)]

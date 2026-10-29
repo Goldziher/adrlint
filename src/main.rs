@@ -3,6 +3,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
@@ -12,6 +13,9 @@ use adrlint::cli::{Cli, Command, FormatArgs, InitArgs, LintArgs, LockArgs, NewAr
 use adrlint::lock::{self, LockFile};
 use adrlint::report::OutputFormat;
 use adrlint::{config, diagnostics, discovery, markdown, report, rules, template};
+
+/// Titles produce one slug segment of at most this many bytes.
+const MAX_SLUG_LEN: usize = 80;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -43,7 +47,10 @@ fn run(cli: Cli) -> Result<ExitCode> {
 
 fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitCode> {
     let loaded = config::load(config_path)?;
-    let (findings, _) = collect(&loaded, &args.paths, true)?;
+    let (findings, _, stale) = collect(&loaded, &args.paths, true)?;
+    if let Some(canonical) = stale {
+        report_stale_lock(&lock_path(&loaded), canonical);
+    }
     report::print(&findings, args.format, color)?;
 
     if diagnostics::has_errors(&findings) {
@@ -57,10 +64,20 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
 ///
 /// `--check` is the CI form: nothing is written, and a file that would change makes the command exit
 /// `1` so the run fails the build rather than the diff.
+///
+/// A formatting fix that changes the canonical content of a locked ADR (MD034 wrapping a bare URL,
+/// for instance) is refused unless `--force` is passed. Formatting the canonical serializer ignores
+/// is still written: a reflow or a marker change never breaks a lock.
 fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCode> {
     let loaded = config::load(config_path)?;
+    let manifest = if loaded.config.lock.enabled {
+        lock::load(&lock_path(&loaded))?
+    } else {
+        LockFile::default()
+    };
     let directories = resolve_directories(&args.paths, &loaded)?;
     let mut changed = Vec::new();
+    let mut refused = Vec::new();
 
     for directory in directories {
         let scanned =
@@ -72,8 +89,18 @@ fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCo
             if formatted == source {
                 continue;
             }
+            if changes_locked_content(&loaded, &manifest, &file.path, &formatted) && !args.force {
+                eprintln!(
+                    "refusing to change locked content of {} (use --force)",
+                    file.path.display()
+                );
+                refused.push(file.path.clone());
+                continue;
+            }
             if !args.check {
-                fs::write(&file.path, &formatted).with_context(|| format!("writing {}", file.path.display()))?;
+                reject_symlink(&file.path)?;
+                write_atomic(&file.path, formatted.as_bytes())
+                    .with_context(|| format!("writing {}", file.path.display()))?;
             }
             changed.push(file.path.clone());
         }
@@ -87,19 +114,35 @@ fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCo
         }
     }
 
-    if args.check && !changed.is_empty() {
+    if !refused.is_empty() || (args.check && !changed.is_empty()) {
         return Ok(ExitCode::from(1));
     }
     Ok(ExitCode::SUCCESS)
 }
 
-type LintResult = (Vec<diagnostics::Diagnostic>, Vec<(PathBuf, Document)>);
+/// Whether writing `formatted` would change the canonical content of a locked ADR.
+///
+/// A stale manifest is ignored: its hashes belong to another serializer version and cannot be
+/// trusted, so it must not block formatting.
+fn changes_locked_content(loaded: &config::Loaded, manifest: &LockFile, path: &Path, formatted: &str) -> bool {
+    if !manifest.is_current() {
+        return false;
+    }
+    let Some(entry) = manifest.entry(&lock::key(&loaded.root, path)) else {
+        return false;
+    };
+    lock::canonical_hash(&adr::parse(formatted)) != entry.blake3
+}
 
-/// Lints every ADR reachable from `paths`, returning the findings and the parsed documents.
+type LintResult = (Vec<diagnostics::Diagnostic>, Vec<(PathBuf, Document)>, Option<u32>);
+
+/// Lints every ADR reachable from `paths`, returning the findings, the parsed documents and the
+/// stale canonical version when the manifest belongs to another serializer version.
 fn collect(loaded: &config::Loaded, paths: &[PathBuf], check_lock: bool) -> Result<LintResult> {
     let directories = resolve_directories(paths, loaded)?;
     let mut findings = Vec::new();
     let mut documents = Vec::new();
+    let mut stale = None;
 
     for directory in directories {
         let scanned =
@@ -127,18 +170,23 @@ fn collect(loaded: &config::Loaded, paths: &[PathBuf], check_lock: bool) -> Resu
                 }
             }
         } else {
-            eprintln!(
-                "adrlint: {} uses canonical version {}; run `adrlint lock --all` to refresh it",
-                lock_path(loaded).display(),
-                manifest.canonical
-            );
+            stale = Some(manifest.canonical);
         }
         findings.extend(lock::missing_entries(&manifest, &loaded.root));
     }
 
     rules::apply_overrides(&mut findings, &loaded.config.rules);
     diagnostics::sort(&mut findings);
-    Ok((findings, documents))
+    Ok((findings, documents, stale))
+}
+
+/// Reports a manifest written by another canonical serializer version exactly once.
+fn report_stale_lock(path: &Path, canonical: u32) {
+    eprintln!(
+        "adrlint: {} uses canonical version {}; run `adrlint lock --all` to refresh it",
+        path.display(),
+        canonical
+    );
 }
 
 fn lock_path(loaded: &config::Loaded) -> PathBuf {
@@ -179,6 +227,9 @@ fn init(config_path: Option<&Path>, args: InitArgs) -> Result<ExitCode> {
     let path = config_path
         .map(Path::to_path_buf)
         .unwrap_or_else(|| cwd.join(".adrlint.toml"));
+    if is_symlink(&path)? {
+        bail!("{} is a symlink; refusing to overwrite it", path.display());
+    }
     if path.exists() && !args.force {
         bail!("{} already exists; pass --force to overwrite it", path.display());
     }
@@ -192,7 +243,8 @@ fn init(config_path: Option<&Path>, args: InitArgs) -> Result<ExitCode> {
     config::validate_dir(&directory).context("invalid --dir")?;
     let adr_directory = root.join(&directory);
 
-    fs::write(&path, config::render(&directory, args.start)).with_context(|| format!("writing {}", path.display()))?;
+    write_atomic(&path, config::render(&directory, args.start).as_bytes())
+        .with_context(|| format!("writing {}", path.display()))?;
     fs::create_dir_all(&adr_directory).with_context(|| format!("creating {}", adr_directory.display()))?;
 
     let scanned = discovery::scan(&adr_directory)?;
@@ -210,10 +262,7 @@ fn init(config_path: Option<&Path>, args: InitArgs) -> Result<ExitCode> {
 }
 
 fn new(config_path: Option<&Path>, args: NewArgs) -> Result<ExitCode> {
-    let title = args.title.trim();
-    if title.is_empty() {
-        bail!("the ADR title must not be empty");
-    }
+    let title = validate_title(&args.title)?;
 
     let loaded = config::load(config_path)?;
     let directory = loaded.root.join(&loaded.config.adr.dir);
@@ -235,11 +284,38 @@ fn new(config_path: Option<&Path>, args: NewArgs) -> Result<ExitCode> {
         bail!("the ADR directory has reached the maximum number, 9999");
     }
 
-    let name = format!("{next:04}-{}.md", template::slugify(title));
+    let name = format!("{next:04}-{}.md", truncate_slug(&template::slugify(title)));
     let path = directory.join(name);
     write_new(&path, &template::render(title, "proposed"))?;
     println!("created {}", path.display());
     Ok(ExitCode::SUCCESS)
+}
+
+/// Validates a new ADR title before it reaches a file name.
+fn validate_title(raw: &str) -> Result<&str> {
+    let title = raw.trim();
+    if title.is_empty() {
+        bail!("the ADR title must not be empty");
+    }
+    if title.chars().any(char::is_control) {
+        bail!("the ADR title must not contain control characters");
+    }
+    if !title.chars().any(|character| character.is_ascii_alphanumeric()) {
+        bail!("the ADR title must contain at least one ASCII letter or digit");
+    }
+    Ok(title)
+}
+
+/// Truncates a slug to [`MAX_SLUG_LEN`] ASCII bytes, cutting at a hyphen when one is available.
+fn truncate_slug(slug: &str) -> &str {
+    if slug.len() <= MAX_SLUG_LEN {
+        return slug;
+    }
+    let boundary = slug[..MAX_SLUG_LEN]
+        .rfind('-')
+        .filter(|index| *index > 0)
+        .unwrap_or(MAX_SLUG_LEN);
+    &slug[..boundary]
 }
 
 fn lock_command(config_path: Option<&Path>, args: LockArgs) -> Result<ExitCode> {
@@ -248,7 +324,7 @@ fn lock_command(config_path: Option<&Path>, args: LockArgs) -> Result<ExitCode> 
         bail!("locking is disabled in the configuration; set lock.enabled = true to use it");
     }
 
-    let (findings, documents) = collect(&loaded, &args.paths, true)?;
+    let (findings, documents, stale) = collect(&loaded, &args.paths, true)?;
     if diagnostics::has_errors(&findings) {
         report::print(&findings, OutputFormat::Text, true)?;
         if args.check {
@@ -260,12 +336,18 @@ fn lock_command(config_path: Option<&Path>, args: LockArgs) -> Result<ExitCode> 
 
     let manifest_path = lock_path(&loaded);
     let existing = lock::load(&manifest_path)?;
-    if !existing.is_current() && (!args.all || !args.paths.is_empty()) {
-        bail!(
-            "{} uses canonical version {}; run `adrlint lock --all` without paths to re-lock every ADR",
-            manifest_path.display(),
-            existing.canonical
-        );
+    if let Some(canonical) = stale {
+        report_stale_lock(&manifest_path, canonical);
+        if args.check {
+            return Ok(ExitCode::from(1));
+        }
+        if !args.all || !args.paths.is_empty() {
+            bail!(
+                "{} uses canonical version {}; run `adrlint lock --all` without paths to re-lock every ADR",
+                manifest_path.display(),
+                canonical
+            );
+        }
     }
 
     let mut candidate = existing.clone();
@@ -355,4 +437,55 @@ fn write_new(path: &Path, contents: &str) -> Result<()> {
     };
     file.write_all(contents.as_bytes())
         .with_context(|| format!("writing {}", path.display()))
+}
+
+fn is_symlink(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(metadata.file_type().is_symlink()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
+    }
+}
+
+/// Refuses to write through a symlink, so a formatting run cannot rewrite a file outside the ADR
+/// directory.
+fn reject_symlink(path: &Path) -> Result<()> {
+    if is_symlink(path)? {
+        bail!("refusing to write through the symlink at {}", path.display());
+    }
+    Ok(())
+}
+
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Writes `bytes` to a temporary file beside `path`, then renames it into place.
+///
+/// A rename is atomic on the same filesystem, so an interrupted write cannot leave a half-written
+/// ADR or configuration behind.
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("adrlint");
+    let temporary = parent.join(format!(".{name}.{}.{counter}.tmp", std::process::id()));
+
+    let result = (|| -> Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .with_context(|| format!("creating {}", temporary.display()))?;
+        file.write_all(bytes)
+            .with_context(|| format!("writing {}", temporary.display()))?;
+        file.flush()
+            .with_context(|| format!("flushing {}", temporary.display()))?;
+        fs::rename(&temporary, path).with_context(|| format!("replacing {}", path.display()))?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }

@@ -12,11 +12,12 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::fs;
-use std::io;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Component, Path};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use saphyr::{ScalarOwned, Tag, YamlOwned};
 use serde::{Deserialize, Serialize};
 
@@ -126,27 +127,127 @@ pub fn key(root: &Path, path: &Path) -> String {
 }
 
 /// Reads a lock file. A missing file is an empty lock, because presence is opt-in.
+///
+/// Manifest keys are validated before use: every key must stay inside the project root, so a
+/// hand-written entry such as `/etc/passwd` cannot be used to probe for files outside it.
 pub fn load(path: &Path) -> Result<LockFile> {
     match fs::read_to_string(path) {
-        Ok(source) => toml::from_str(&source).with_context(|| format!("parsing the lock file at {}", path.display())),
+        Ok(source) => {
+            let lock: LockFile =
+                toml::from_str(&source).with_context(|| format!("parsing the lock file at {}", path.display()))?;
+            validate_keys(&lock).with_context(|| format!("invalid lock file at {}", path.display()))?;
+            Ok(lock)
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(LockFile::default()),
         Err(error) => Err(error).with_context(|| format!("reading the lock file at {}", path.display())),
     }
 }
 
-/// Writes a lock file as sorted, stable TOML with a trailing newline.
-pub fn save(path: &Path, lock: &LockFile) -> Result<()> {
-    fs::write(path, render(lock)).with_context(|| format!("writing the lock file at {}", path.display()))
+fn validate_keys(lock: &LockFile) -> Result<()> {
+    for key in lock.adrs.keys() {
+        validate_key(key)?;
+    }
+    Ok(())
 }
 
-/// Renders a lock file. Entries are sorted by their [`BTreeMap`] key and the output ends in a
-/// newline, so a re-lock that changes nothing produces an identical file.
-pub fn render(lock: &LockFile) -> String {
-    let mut rendered = toml::to_string_pretty(lock).expect("a lock file is always serializable");
-    if !rendered.ends_with('\n') {
-        rendered.push('\n');
+/// Rejects a manifest key that is empty, absolute, traverses upward or carries a Windows prefix.
+fn validate_key(key: &str) -> Result<()> {
+    if key.trim().is_empty() {
+        bail!("lock file key must not be empty");
     }
-    rendered
+    if key.starts_with('/') || key.starts_with('\\') {
+        bail!("lock file key {key:?} must be relative to the project root");
+    }
+    let mut characters = key.chars();
+    if let (Some(first), Some(':')) = (characters.next(), characters.next())
+        && first.is_ascii_alphabetic()
+    {
+        bail!("lock file key {key:?} must not start with a drive prefix");
+    }
+    let path = Path::new(key);
+    if path.is_absolute() {
+        bail!("lock file key {key:?} must be relative to the project root");
+    }
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        bail!("lock file key {key:?} must not escape the project root");
+    }
+    if key.split(['/', '\\']).any(|part| part == "..") {
+        bail!("lock file key {key:?} must not escape the project root");
+    }
+    Ok(())
+}
+
+/// Writes a lock file as sorted, stable TOML with a single trailing newline.
+///
+/// The write is atomic and refused when `path` is a symlink, so the manifest cannot be used to
+/// rewrite a file elsewhere on disk.
+pub fn save(path: &Path, lock: &LockFile) -> Result<()> {
+    if is_symlink(path)? {
+        bail!(
+            "refusing to write the lock file through the symlink at {}",
+            path.display()
+        );
+    }
+    let rendered = render(lock).with_context(|| format!("rendering the lock file at {}", path.display()))?;
+    write_atomic(path, rendered.as_bytes()).with_context(|| format!("writing the lock file at {}", path.display()))
+}
+
+fn is_symlink(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(metadata.file_type().is_symlink()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
+    }
+}
+
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Writes `bytes` to a temporary file beside `path`, then renames it into place.
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("adrlint.lock");
+    let temporary = parent.join(format!(".{name}.{}.{counter}.tmp", std::process::id()));
+
+    let result = (|| -> Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .with_context(|| format!("creating {}", temporary.display()))?;
+        file.write_all(bytes)
+            .with_context(|| format!("writing {}", temporary.display()))?;
+        file.flush()
+            .with_context(|| format!("flushing {}", temporary.display()))?;
+        fs::rename(&temporary, path).with_context(|| format!("replacing {}", path.display()))?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+/// Renders a lock file. Entries are sorted by their [`BTreeMap`] key and the output ends in exactly
+/// one newline, so a re-lock that changes nothing produces an identical file.
+pub fn render(lock: &LockFile) -> Result<String> {
+    let mut rendered = toml::to_string_pretty(lock).context("serializing the lock file")?;
+    while rendered.ends_with('\n') {
+        rendered.pop();
+    }
+    rendered.push('\n');
+    Ok(rendered)
 }
 
 /// Removes `key` from the manifest, returning whether an entry existed.
@@ -633,5 +734,64 @@ mod tests {
         assert!(lock.is_current());
         lock.canonical = CANONICAL_VERSION + 1;
         assert!(!lock.is_current());
+    }
+
+    #[test]
+    fn should_render_sorted_keys_and_exactly_one_trailing_newline() {
+        let mut lock = LockFile::default();
+        lock.insert("docs/adr/0002-second.md", LockEntry::new(2, "accepted", "b"));
+        lock.insert("docs/adr/0001-first.md", LockEntry::new(1, "accepted", "a"));
+
+        let rendered = render(&lock).expect("a lock file serializes");
+        assert!(rendered.ends_with('\n'));
+        assert!(!rendered.ends_with("\n\n"), "exactly one trailing newline");
+        let first = rendered.find("0001-first").expect("first entry");
+        let second = rendered.find("0002-second").expect("second entry");
+        assert!(first < second, "entries are sorted by path");
+
+        let parsed: LockFile = toml::from_str(&rendered).expect("the rendered lock parses");
+        assert_eq!(parsed, lock);
+    }
+
+    #[test]
+    fn should_reject_an_absolute_manifest_key() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("adrlint.lock");
+        fs::write(
+            &path,
+            "version = 1\ncanonical = 1\n\n[adrs.\"/etc/passwd\"]\nnumber = 1\nstatus = \"accepted\"\nblake3 = \"x\"\n",
+        )
+        .unwrap();
+
+        let error = format!("{:#}", load(&path).unwrap_err());
+        assert!(error.contains("/etc/passwd"), "{error}");
+    }
+
+    #[test]
+    fn should_reject_a_manifest_key_that_traverses_upward() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("adrlint.lock");
+        fs::write(
+            &path,
+            "version = 1\ncanonical = 1\n\n[adrs.\"../outside.md\"]\nnumber = 1\nstatus = \"accepted\"\nblake3 = \"x\"\n",
+        )
+        .unwrap();
+
+        let error = format!("{:#}", load(&path).unwrap_err());
+        assert!(error.contains("../outside.md"), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn should_refuse_to_save_through_a_symlink() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let target = directory.path().join("outside.toml");
+        fs::write(&target, "untouched\n").unwrap();
+        let link = directory.path().join("adrlint.lock");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let error = save(&link, &single_entry()).unwrap_err().to_string();
+        assert!(error.contains("symlink"), "{error}");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "untouched\n");
     }
 }

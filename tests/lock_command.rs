@@ -135,3 +135,46 @@ fn should_reject_an_empty_unlock_reason() {
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("must not be empty"));
 }
+
+#[test]
+fn should_exit_one_and_report_a_stale_lock_once() {
+    let (directory, _) = scaffold();
+    let output = run(adrlint().current_dir(directory.path()).arg("lock"));
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    let manifest_path = directory.path().join("adrlint.lock");
+    let manifest = fs::read_to_string(&manifest_path).unwrap();
+    fs::write(&manifest_path, manifest.replace("canonical = 1", "canonical = 999")).unwrap();
+
+    let output = run(adrlint().current_dir(directory.path()).args(["lock", "--check"]));
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert_eq!(
+        stderr(&output).matches("canonical version").count(),
+        1,
+        "the stale message is reported once: {}",
+        stderr(&output)
+    );
+
+    let output = run(adrlint().current_dir(directory.path()).arg("lock"));
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "without --check a stale lock still asks for --all: {}",
+        stderr(&output)
+    );
+    assert!(stderr(&output).contains("--all"), "{}", stderr(&output));
+}
+
+#[test]
+fn should_reject_a_manifest_key_outside_the_project() {
+    let (directory, _) = scaffold();
+    fs::write(
+        directory.path().join("adrlint.lock"),
+        "version = 1\ncanonical = 1\n\n[adrs.\"/etc/passwd\"]\nnumber = 1\nstatus = \"accepted\"\nblake3 = \"x\"\n",
+    )
+    .unwrap();
+
+    let output = run(adrlint().current_dir(directory.path()).arg("lint"));
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert!(stderr(&output).contains("/etc/passwd"), "{}", stderr(&output));
+}

@@ -96,7 +96,7 @@ fn should_round_trip_a_sorted_lock_file() {
     let loaded = lock::load(&path).unwrap();
     assert_eq!(loaded, lock);
     assert!(loaded.is_current());
-    assert_eq!(lock::render(&loaded), rendered, "saving twice is idempotent");
+    assert_eq!(lock::render(&loaded).unwrap(), rendered, "saving twice is idempotent");
 }
 
 #[test]
