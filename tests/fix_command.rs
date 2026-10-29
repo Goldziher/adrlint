@@ -230,3 +230,34 @@ fn should_not_mark_a_readme_finding_fixable() {
         stdout(&output)
     );
 }
+
+#[test]
+fn should_write_nothing_when_a_planned_file_cannot_be_read() {
+    let (directory, first) = project(&misplaced());
+    fs::write(directory.path().join("docs/adr/0002-y.md"), [0xff_u8, 0xfe, 0x41]).expect("writing bytes");
+
+    for args in [&["lint", "--fix"][..], &["format"][..]] {
+        let output = run(&directory, args);
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {}", stderr(&output));
+        assert!(stderr(&output).contains("0002-y.md"), "{args:?}: {}", stderr(&output));
+        assert_eq!(
+            read(&first),
+            misplaced(),
+            "{args:?}: no file is written when any file cannot be read"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn should_keep_the_permissions_of_a_fixed_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (directory, path) = project(&misplaced());
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).expect("setting permissions");
+    let output = run(&directory, &["lint", "--fix"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(read(&path).contains("\n### Consequences\n"));
+    let mode = fs::metadata(&path).expect("reading metadata").permissions().mode() & 0o777;
+    assert_eq!(mode, 0o640);
+}

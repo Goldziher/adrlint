@@ -67,7 +67,7 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
         for path in &outcome.changed {
             eprintln!("fixed {}", path.display());
         }
-        refused = !outcome.refused.is_empty();
+        refused = !outcome.refused.is_empty() || outcome.failed;
     }
 
     let collected = collect(&loaded, &directories, true)?;
@@ -79,7 +79,7 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
         eprintln!("{}", report::summarize(&collected.findings, collected.files));
     }
 
-    // A fix refused on a locked ADR leaves the file as it was: the run did not do what was asked.
+    // A fix that was refused or not written leaves the file as it was: the run did not do what was asked.
     if diagnostics::has_errors(&collected.findings) || refused {
         Ok(ExitCode::from(1))
     } else {
@@ -143,7 +143,11 @@ enum Planned {
     Unchanged,
     Unreadable(diagnostics::Diagnostic),
     Refused,
-    Write(String),
+    /// The file as it was read, and its fixed form.
+    Write {
+        source: String,
+        fixed: String,
+    },
 }
 
 /// The files to fix when the paths name only files, as a hook passing its staged files does.
@@ -185,11 +189,13 @@ fn apply_fixes(
         .filter(|file| discovery::is_numbered(&file.name))
         .filter(|file| named.is_none_or(|named| fs::canonicalize(&file.path).is_ok_and(|path| named.contains(&path))))
         .collect::<Vec<_>>();
-    // Every plan is computed before anything is written, so one file that cannot be fixed leaves the
-    // whole tree untouched instead of half rewritten.
+    // Every plan is computed before anything is written: a file that cannot be planned stops the run,
+    // and a file that cannot be read is reported and leaves every file untouched. A refused fix to a
+    // locked ADR is reported and skipped; the other files are still written.
     let planned = parallel::map(&files, |file| plan_fix(loaded, &manifest, mode, &file.path))
         .into_iter()
         .collect::<Result<Vec<_>>>()?;
+    let unreadable = planned.iter().any(|plan| matches!(plan, Planned::Unreadable(_)));
 
     let mut outcome = FixOutcome::default();
     for (file, plan) in files.iter().zip(planned) {
@@ -206,16 +212,39 @@ fn apply_fixes(
                 );
                 outcome.refused.push(file.path.clone());
             }
-            Planned::Write(fixed) => {
-                if !mode.check {
-                    write_atomic(&file.path, fixed.as_bytes())
-                        .with_context(|| format!("writing {}", file.path.display()))?;
+            Planned::Write { source, fixed } => {
+                if mode.check {
+                    outcome.changed.push(file.path.clone());
+                } else if unreadable {
+                    // Nothing is written while any file cannot be read.
+                } else if rewrite_if_unchanged(&file.path, &source, &fixed)? {
+                    outcome.changed.push(file.path.clone());
+                } else {
+                    eprintln!(
+                        "adrlint: {} changed while it was being fixed; not rewriting it",
+                        file.path.display()
+                    );
+                    outcome.failed = true;
                 }
-                outcome.changed.push(file.path.clone());
             }
         }
     }
+    if unreadable && !mode.check {
+        eprintln!("adrlint: no file was rewritten because a file could not be read");
+    }
     Ok(outcome)
+}
+
+/// Replaces `path` with `fixed` only if it still holds `source`, the text the fix was planned from.
+///
+/// An editor or a second run saving the file in between keeps its write instead of losing it.
+fn rewrite_if_unchanged(path: &Path, source: &str, fixed: &str) -> Result<bool> {
+    let current = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    if current != source.as_bytes() {
+        return Ok(false);
+    }
+    write_atomic(path, fixed.as_bytes()).with_context(|| format!("writing {}", path.display()))?;
+    Ok(true)
 }
 
 fn plan_fix(loaded: &config::Loaded, manifest: &LockFile, mode: &FixMode, path: &Path) -> Result<Planned> {
@@ -232,7 +261,7 @@ fn plan_fix(loaded: &config::Loaded, manifest: &LockFile, mode: &FixMode, path: 
     if !mode.force && changes_locked_content(loaded, manifest, path, &source, &fixed) {
         return Ok(Planned::Refused);
     }
-    Ok(Planned::Write(fixed))
+    Ok(Planned::Write { source, fixed })
 }
 
 /// Whether writing `formatted` over `source` would change the canonical content of a locked ADR.
@@ -943,6 +972,11 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
             .with_context(|| format!("writing {}", temporary.display()))?;
         file.flush()
             .with_context(|| format!("flushing {}", temporary.display()))?;
+        // A rename replaces the file, so the original's permissions are carried over explicitly.
+        if let Ok(metadata) = fs::metadata(path) {
+            fs::set_permissions(&temporary, metadata.permissions())
+                .with_context(|| format!("setting the permissions of {}", temporary.display()))?;
+        }
         fs::rename(&temporary, path).with_context(|| format!("replacing {}", path.display()))?;
         Ok(())
     })();
@@ -965,5 +999,18 @@ mod tests {
         let finding = read_adr(&path).unwrap_err();
         assert_eq!(finding.code, "ADR52");
         assert!(finding.message.contains("byte limit"), "{}", finding.message);
+    }
+
+    #[test]
+    fn should_not_rewrite_a_file_that_changed_since_it_was_planned() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("0001-x.md");
+        fs::write(&path, "edited elsewhere\n").unwrap();
+        assert!(!rewrite_if_unchanged(&path, "planned\n", "fixed\n").unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "edited elsewhere\n");
+
+        fs::write(&path, "planned\n").unwrap();
+        assert!(rewrite_if_unchanged(&path, "planned\n", "fixed\n").unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "fixed\n");
     }
 }

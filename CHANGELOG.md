@@ -41,8 +41,11 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
-- `lint --fix` plans every file before writing any, so a file it cannot fix leaves the tree untouched,
-  and it rewrites only numbered ADRs, never a README or template inside a log.
+- `lint --fix` and `format` plan every file before writing any: a file that cannot be read or a
+  symlinked ADR means no file is written, while a fix refused on a locked ADR is reported and the
+  other files are still written. A file edited after it was planned is reported and not rewritten,
+  and a rewritten file keeps its permissions. `lint --fix` rewrites only numbered ADRs, never a
+  README or template inside a log.
 - A file a hook passes that the commit deletes lints the log it leaves instead of aborting the run.
 - A recursive root with no ADR log under it is reported instead of passing with nothing checked.
 - `lint --fix` and `format` given only files (as a hook passes its staged files) rewrite only those
