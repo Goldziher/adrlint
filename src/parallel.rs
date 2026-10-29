@@ -57,7 +57,10 @@ mod tests {
     #[test]
     fn should_return_results_in_input_order() {
         let items = (0..500).collect::<Vec<usize>>();
-        assert_eq!(map(&items, |item| item * 2), items.iter().map(|item| item * 2).collect::<Vec<_>>());
+        assert_eq!(
+            map(&items, |item| item * 2),
+            items.iter().map(|item| item * 2).collect::<Vec<_>>()
+        );
     }
 
     #[test]

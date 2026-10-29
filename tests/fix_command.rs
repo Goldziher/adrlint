@@ -53,7 +53,13 @@ fn should_fix_misplaced_heading_levels() {
     assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
 
     let output = run(&directory, &["lint", "--fix"]);
-    assert_eq!(output.status.code(), Some(0), "{}\n{}", stdout(&output), stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
     assert!(stderr(&output).contains("fixed "), "{}", stderr(&output));
     let fixed = read(&path);
     assert!(fixed.contains("\n### Consequences\n"), "{fixed}");
@@ -80,9 +86,18 @@ fn should_apply_what_format_applies() {
         .replace("# Record architecture decisions", "# Record architecture decisions   ");
     let (directory, path) = project(&broken);
     let output = run(&directory, &["lint", "--fix"]);
-    assert_eq!(output.status.code(), Some(0), "{}\n{}", stdout(&output), stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
     let fixed = read(&path);
-    assert!(fixed.contains("* Good, because the rationale survives staff changes"), "{fixed}");
+    assert!(
+        fixed.contains("* Good, because the rationale survives staff changes"),
+        "{fixed}"
+    );
     assert!(!fixed.contains("decisions   \n"), "{fixed}");
 }
 
@@ -139,7 +154,11 @@ fn should_refuse_to_change_locked_content_without_force() {
     let locked = fs::read(&path).expect("reading the locked ADR");
 
     let output = run(&directory, &["lint", "--fix"]);
-    assert!(stderr(&output).contains("refusing to change locked content"), "{}", stderr(&output));
+    assert!(
+        stderr(&output).contains("refusing to change locked content"),
+        "{}",
+        stderr(&output)
+    );
     assert_eq!(fs::read(&path).unwrap(), locked, "a refused fix must not write");
 
     let output = run(&directory, &["lint", "--fix", "--force"]);

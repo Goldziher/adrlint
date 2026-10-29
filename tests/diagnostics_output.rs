@@ -45,7 +45,11 @@ fn stderr(output: &Output) -> String {
 
 fn findings(output: &Output) -> Vec<serde_json::Value> {
     serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
-        panic!("parsing JSON: {error}\nstdout: {}\nstderr: {}", stdout(output), stderr(output))
+        panic!(
+            "parsing JSON: {error}\nstdout: {}\nstderr: {}",
+            stdout(output),
+            stderr(output)
+        )
     })
 }
 
@@ -61,7 +65,10 @@ fn should_add_span_help_and_fixable_to_json_without_dropping_fields() {
         .find(|finding| finding["code"] == "MADR06")
         .unwrap_or_else(|| panic!("MADR06 expected: {}", stdout(&output)));
     for field in ["code", "severity", "message", "path", "line", "column"] {
-        assert!(!level[field].is_null(), "{field} is part of the stable contract: {level}");
+        assert!(
+            !level[field].is_null(),
+            "{field} is part of the stable contract: {level}"
+        );
     }
     assert_eq!(level["end_line"], level["line"], "{level}");
     let column = level["column"].as_u64().expect("a column");

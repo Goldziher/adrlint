@@ -87,7 +87,13 @@ fn monorepo() -> TempDir {
 fn should_lint_a_monorepo_and_skip_everything_that_is_not_a_log() {
     let directory = monorepo();
     let output = lint_json(&directory);
-    assert_eq!(output.status.code(), Some(0), "{}\n{}", stdout(&output), stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
     assert!(findings(&output).is_empty(), "{}", stdout(&output));
 }
 
@@ -141,7 +147,10 @@ fn should_lock_every_nested_log_with_project_relative_keys() {
         assert!(manifest.contains(key), "{key} is a manifest key:\n{manifest}");
     }
     assert!(!manifest.contains('\\'), "keys use forward slashes:\n{manifest}");
-    assert!(!manifest.contains("node_modules"), "ignored logs are not locked:\n{manifest}");
+    assert!(
+        !manifest.contains("node_modules"),
+        "ignored logs are not locked:\n{manifest}"
+    );
 
     let output = run(&directory, &["lock", "--check"]);
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
@@ -206,7 +215,13 @@ fn should_handle_thousands_of_directories_quickly() {
 
     let started = std::time::Instant::now();
     let output = lint_json(&directory);
-    assert_eq!(output.status.code(), Some(0), "{}\n{}", stdout(&output), stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
     assert!(findings(&output).is_empty());
     assert!(
         started.elapsed() < std::time::Duration::from_secs(120),
@@ -247,7 +262,10 @@ fn should_count_overlapping_roots_once() {
     for relative in ["adrs/a/0001-a.md", "adrs/a/0002-b.md", "adrs/b/0001-c.md"] {
         write(directory.path(), relative, ADR);
     }
-    let output = run(&directory, &["lint", "--recursive", "adrs", "adrs/a", "adrs", "adrs/b/"]);
+    let output = run(
+        &directory,
+        &["lint", "--recursive", "adrs", "adrs/a", "adrs", "adrs/b/"],
+    );
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     assert!(
         stderr(&output).contains("no problems found in 3 files checked"),
@@ -301,7 +319,13 @@ fn should_lint_a_large_adr_under_the_limit() {
     let big = format!("{ADR}{}", "* Good, because it is long\n".repeat(20_000));
     write(directory.path(), "adrs/big/0001-big.md", big);
     let output = lint_json(&directory);
-    assert_eq!(output.status.code(), Some(0), "{}\n{}", stdout(&output), stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
 }
 
 #[test]
@@ -309,7 +333,13 @@ fn should_lint_windows_line_endings_and_keep_the_lock_stable() {
     let directory = project();
     write(directory.path(), "adrs/win/0001-a.md", ADR.replace('\n', "\r\n"));
     let output = lint_json(&directory);
-    assert_eq!(output.status.code(), Some(0), "{}\n{}", stdout(&output), stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
 
     let output = run(&directory, &["lock"]);
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
@@ -362,7 +392,13 @@ mod unix {
         symlink("..", directory.path().join("adrs/team/up")).expect("linking the parent");
 
         let output = lint_json(&directory);
-        assert_eq!(output.status.code(), Some(0), "{}\n{}", stdout(&output), stderr(&output));
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}\n{}",
+            stdout(&output),
+            stderr(&output)
+        );
         assert!(findings(&output).is_empty(), "{}", stdout(&output));
     }
 
@@ -402,7 +438,13 @@ mod unix {
 
         let output = lint_json(&directory);
         fs::set_permissions(&hidden, fs::Permissions::from_mode(0o755)).expect("restoring the folder");
-        assert_eq!(output.status.code(), Some(0), "{}\n{}", stdout(&output), stderr(&output));
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}\n{}",
+            stdout(&output),
+            stderr(&output)
+        );
         assert!(stderr(&output).contains("skipping"), "{}", stderr(&output));
     }
 }
