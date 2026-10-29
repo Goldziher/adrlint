@@ -11,6 +11,7 @@ dependencies = [
  "clap",
  "dirs",
  "glob",
+ "ignore",
  "jiff",
  "owo-colors",
  "pretty_assertions",
@@ -21,7 +22,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
- "walkdir",
 ]
 
 [[package]]

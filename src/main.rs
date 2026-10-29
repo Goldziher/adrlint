@@ -3,11 +3,12 @@ use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
-use walkdir::{DirEntry, WalkDir};
+use ignore::{WalkBuilder, WalkState};
 
 use adrlint::adr::{self, Document};
 use adrlint::cli::{Cli, Command, FormatArgs, InitArgs, LintArgs, LockArgs, NewArgs, UnlockArgs};
@@ -226,8 +227,10 @@ fn lock_path(loaded: &config::Loaded) -> PathBuf {
 }
 
 fn resolve_directories(paths: &[PathBuf], loaded: &config::Loaded, recursive: bool) -> Result<Vec<PathBuf>> {
+    let (sources, discovered) = roots(paths, loaded)?;
+    let recursive = recursive || discovered || loaded.config.adr.recursive;
     let mut directories = BTreeSet::new();
-    for source in roots(paths, loaded)? {
+    for source in sources {
         for root in expand_source(&source)? {
             if recursive {
                 directories.extend(descend(&root)?);
@@ -255,31 +258,47 @@ impl Source {
     }
 }
 
-/// The sources to resolve, highest precedence first: CLI paths, then `[adr].paths`, then `[adr].dir`.
+/// The sources to resolve, highest precedence first: CLI paths, then `[adr].paths`, then `[adr].dir`,
+/// and whether they were discovered rather than named.
 ///
 /// CLI paths are interpreted relative to the working directory; configured paths are relative to the
-/// project root, so they are joined here rather than by the caller.
-fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<Vec<Source>> {
+/// project root, so they are joined here rather than by the caller. With nothing named and no
+/// `docs/adr`, the project root is searched for ADR logs, so a repository with `adrs/<area>/` folders
+/// or a service's own `adrs/` works without configuration. A `dir` a configuration names must exist.
+fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<(Vec<Source>, bool)> {
     if !paths.is_empty() {
-        return Ok(paths.iter().map(|path| Source::new(path.clone(), path)).collect());
+        return Ok((
+            paths.iter().map(|path| Source::new(path.clone(), path)).collect(),
+            false,
+        ));
     }
     if !loaded.config.adr.paths.is_empty() {
-        return Ok(loaded
+        let sources = loaded
             .config
             .adr
             .paths
             .iter()
             .map(|path| Source::new(loaded.root.join(path), path))
-            .collect());
+            .collect();
+        return Ok((sources, false));
     }
     let directory = loaded.root.join(&loaded.config.adr.dir);
-    if !directory.is_dir() {
+    if directory.is_dir() {
+        return Ok((vec![Source::new(directory, &loaded.config.adr.dir)], false));
+    }
+    if loaded.config.adr.dir_configured {
         bail!(
             "ADR directory {} does not exist; run `adrlint init` first",
             directory.display()
         );
     }
-    Ok(vec![Source::new(directory, &loaded.config.adr.dir)])
+    if descend(&loaded.root)?.is_empty() {
+        bail!(
+            "no ADR log found under {} (no `docs/adr`, and no directory holds a NNNN-*.md file); run `adrlint init` first",
+            loaded.root.display()
+        );
+    }
+    Ok((vec![Source::new(loaded.root.clone(), Path::new("."))], true))
 }
 
 /// Expands one source into ADR directories.
@@ -293,16 +312,18 @@ fn expand_source(source: &Source) -> Result<Vec<PathBuf>> {
         let matches =
             glob::glob(&pattern).map_err(|error| anyhow::anyhow!("invalid glob pattern {pattern}: {error}"))?;
         let mut directories = Vec::new();
+        let mut matched = false;
         for entry in matches {
             let path = entry.with_context(|| format!("reading glob match of {pattern}"))?;
-            directories.push(classify(&path)?);
+            matched = true;
+            directories.extend(classify(&path)?);
         }
-        if directories.is_empty() {
+        if !matched {
             bail!("nothing matched {pattern}");
         }
         return Ok(directories);
     }
-    Ok(vec![classify(&source.path)?])
+    Ok(classify(&source.path)?.into_iter().collect())
 }
 
 fn is_glob(path: &Path) -> bool {
@@ -313,18 +334,31 @@ fn is_glob(path: &Path) -> bool {
 
 /// The ADR directory a path belongs to: itself when it is a directory, its parent when it is a file.
 ///
-/// A file is always linted with its directory, so a gap or duplicate next to it is still reported.
-fn classify(path: &Path) -> Result<PathBuf> {
+/// A file is always linted with its directory, so a gap or duplicate next to it is still reported. A
+/// file that is not an ADR in a directory that is not an ADR log (`adrs/README.md`, an ADR template)
+/// belongs to no log and is skipped: a hook passes every changed Markdown file under `adrs/`.
+fn classify(path: &Path) -> Result<Option<PathBuf>> {
     let metadata = fs::metadata(path).with_context(|| format!("reading path {}", path.display()))?;
     let directory = if metadata.is_dir() {
         path.to_path_buf()
     } else {
-        path.parent()
+        let parent = path
+            .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."))
-            .to_path_buf()
+            .to_path_buf();
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if !discovery::is_numbered(&name) && !contains_numbered_adr(&parent)? {
+            return Ok(None);
+        }
+        parent
     };
-    fs::canonicalize(&directory).with_context(|| format!("resolving {}", directory.display()))
+    fs::canonicalize(&directory)
+        .map(Some)
+        .with_context(|| format!("resolving {}", directory.display()))
 }
 
 /// Directories `--recursive` never descends into.
@@ -335,31 +369,46 @@ const SKIPPED_DIRECTORIES: [&str; 3] = [".git", "target", "node_modules"];
 /// A recursive root is a search base, not an ADR log: `adrlint lint --recursive .` must not treat the
 /// repository root's `README.md` and `.adrlint.toml` as foreign files in an ADR directory. Only a
 /// directory holding a `NNNN`-prefixed Markdown file is scanned, and a directory with no ADR at all
-/// contributes nothing. Symlinks are not followed.
+/// contributes nothing. Hidden directories, `target`, `node_modules` and whatever `.gitignore` excludes
+/// are skipped, symlinks are not followed, and the walk runs in parallel, so a monorepo root is fast.
 fn descend(root: &Path) -> Result<Vec<PathBuf>> {
-    let mut directories = Vec::new();
-    for entry in WalkDir::new(root)
+    let found = Mutex::new(BTreeSet::new());
+    let failure = Mutex::new(None);
+    WalkBuilder::new(root)
+        .hidden(true)
+        .git_ignore(true)
+        .git_global(false)
+        .git_exclude(true)
+        .require_git(false)
         .follow_links(false)
-        .into_iter()
-        .filter_entry(|entry| !is_skipped(entry))
-    {
-        let entry = entry.with_context(|| format!("walking {}", root.display()))?;
-        if !entry.file_type().is_dir() {
-            continue;
-        }
-        if contains_numbered_adr(entry.path())? {
-            directories.push(entry.path().to_path_buf());
-        }
+        .filter_entry(|entry| {
+            entry.depth() == 0 || !SKIPPED_DIRECTORIES.contains(&entry.file_name().to_string_lossy().as_ref())
+        })
+        .build_parallel()
+        .run(|| {
+            Box::new(|entry| {
+                match entry {
+                    Ok(entry) => {
+                        let is_file = entry.file_type().is_some_and(|kind| kind.is_file());
+                        if is_file
+                            && discovery::is_numbered(&entry.file_name().to_string_lossy())
+                            && let Some(parent) = entry.path().parent()
+                        {
+                            found.lock().expect("discovery set").insert(parent.to_path_buf());
+                        }
+                    }
+                    Err(error) => {
+                        failure.lock().expect("discovery error").get_or_insert(error);
+                        return WalkState::Quit;
+                    }
+                }
+                WalkState::Continue
+            })
+        });
+    if let Some(error) = failure.into_inner().expect("discovery error") {
+        return Err(anyhow::Error::new(error).context(format!("walking {}", root.display())));
     }
-    Ok(directories)
-}
-
-fn is_skipped(entry: &DirEntry) -> bool {
-    if entry.depth() == 0 {
-        return false;
-    }
-    let name = entry.file_name().to_string_lossy();
-    name.starts_with('.') || SKIPPED_DIRECTORIES.contains(&name.as_ref())
+    Ok(found.into_inner().expect("discovery set").into_iter().collect())
 }
 
 /// Whether a directory directly holds a `NNNN-*.md`-shaped file.
@@ -372,13 +421,7 @@ fn contains_numbered_adr(directory: &Path) -> Result<bool> {
         if entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
             continue;
         }
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.ends_with(".md")
-            && name
-                .as_bytes()
-                .get(..4)
-                .is_some_and(|prefix| prefix.iter().all(u8::is_ascii_digit))
-        {
+        if discovery::is_numbered(&entry.file_name().to_string_lossy()) {
             return Ok(true);
         }
     }

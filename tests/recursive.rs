@@ -419,3 +419,127 @@ fn should_report_a_foreign_file_in_a_discovered_adr_directory() {
         stdout(&output)
     );
 }
+
+/// A project with no `dir` of its own, so a missing `docs/adr` falls back to discovery.
+fn unconfigured_tree() -> TempDir {
+    let directory = TempDir::new().expect("temporary directory");
+    fs::write(directory.path().join(".adrlint.toml"), "[adr]\npaths = []\n").expect("writing the configuration");
+    for relative in ["adrs/team-a/0001-a.md", "service/adrs/area/sub/0001-b.md"] {
+        write_adr(directory.path(), relative);
+    }
+    directory
+}
+
+fn linted_paths(output: &Output) -> Vec<String> {
+    let mut paths: Vec<String> = diagnostics(output)
+        .iter()
+        .filter_map(|diagnostic| diagnostic["path"].as_str().map(|path| path.replace('\\', "/")))
+        .collect();
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+#[test]
+fn should_discover_nested_logs_without_configuration() {
+    let directory = unconfigured_tree();
+    fs::write(directory.path().join("service/adrs/area/sub/0003-gap.md"), ADR).expect("writing an ADR after a gap");
+
+    let output = lint_json(&directory, &[]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert!(
+        diagnostics(&output)
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "MADR41b"),
+        "the deeply nested log is discovered and checked: {}",
+        stdout(&output)
+    );
+}
+
+#[test]
+fn should_still_require_a_configured_dir() {
+    let directory = project();
+    write_adr(directory.path(), "adrs/team-a/0001-a.md");
+
+    let output = run(&directory, &["lint"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stdout(&output));
+    assert!(stderr(&output).contains("does not exist"), "{}", stderr(&output));
+}
+
+#[test]
+fn should_report_when_discovery_finds_no_log() {
+    let directory = TempDir::new().expect("temporary directory");
+    fs::write(directory.path().join(".adrlint.toml"), "[adr]\npaths = []\n").expect("writing the configuration");
+
+    let output = run(&directory, &["lint"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stdout(&output));
+    assert!(stderr(&output).contains("no ADR log found"), "{}", stderr(&output));
+}
+
+#[test]
+fn should_not_treat_dated_documents_as_an_adr_log() {
+    let directory = unconfigured_tree();
+    write_adr(directory.path(), "docs/specs/2026-07-01-integration-design.md");
+    fs::write(
+        directory.path().join("docs/specs/2026-07-02-other.md"),
+        "- not an ADR\n",
+    )
+    .expect("writing a dated doc");
+
+    let output = lint_json(&directory, &["--recursive", "."]);
+    assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
+    assert!(diagnostics(&output).is_empty(), "{}", stdout(&output));
+}
+
+#[test]
+fn should_skip_markdown_a_hook_passes_from_outside_any_log() {
+    let directory = unconfigured_tree();
+    fs::write(directory.path().join("adrs/README.md"), "- an index, not an ADR\n").expect("writing the index");
+    fs::write(directory.path().join("adrs/adr-template.md"), "# {title}\n").expect("writing the template");
+
+    let output = lint_json(&directory, &["adrs/README.md", "adrs/adr-template.md"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
+    assert!(diagnostics(&output).is_empty(), "{}", stdout(&output));
+}
+
+#[test]
+fn should_lint_the_log_of_a_numbered_file_a_hook_passes() {
+    let directory = unconfigured_tree();
+    fs::write(directory.path().join("adrs/README.md"), "- an index, not an ADR\n").expect("writing the index");
+    fs::write(directory.path().join("adrs/team-a/0003-gap.md"), ADR).expect("writing an ADR after a gap");
+
+    let output = lint_json(&directory, &["adrs/README.md", "adrs/team-a/0003-gap.md"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert!(
+        linted_paths(&output).iter().all(|path| path.contains("adrs/team-a/")),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[test]
+fn should_search_configured_paths_recursively_when_configured() {
+    let directory = TempDir::new().expect("temporary directory");
+    fs::write(
+        directory.path().join(".adrlint.toml"),
+        "[adr]\npaths = [\"adrs\", \"service/adrs\"]\nrecursive = true\n",
+    )
+    .expect("writing the configuration");
+    for relative in [
+        "adrs/team-a/0001-a.md",
+        "service/adrs/area/0001-b.md",
+        "service/adrs/area/0003-c.md",
+    ] {
+        write_adr(directory.path(), relative);
+    }
+
+    let output = lint_json(&directory, &[]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert!(
+        linted_paths(&output)
+            .iter()
+            .any(|path| path.contains("service/adrs/area/")),
+        "{}",
+        stdout(&output)
+    );
+}

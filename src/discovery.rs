@@ -60,6 +60,29 @@ pub fn parse_number(name: &str) -> Option<u32> {
     name[..4].parse().ok()
 }
 
+/// Whether a file name claims a place in an ADR log: Markdown with a `NNNN-` prefix that is not a date.
+///
+/// The prefix alone decides, so a malformed name such as `0001_use_rust.md` still belongs to the log
+/// and reaches `MADR44`. A dated document such as `2026-07-01-design.md` (plans, specs, meeting notes)
+/// does not: its `YYYY-MM-DD-` prefix is a date, not a decision number.
+pub fn is_numbered(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    if !name.ends_with(".md") || bytes.len() < 5 || !bytes[..4].iter().all(u8::is_ascii_digit) {
+        return false;
+    }
+    !is_dated(bytes)
+}
+
+fn is_dated(bytes: &[u8]) -> bool {
+    let digits =
+        |range: std::ops::Range<usize>| bytes.get(range).is_some_and(|part| part.iter().all(u8::is_ascii_digit));
+    bytes.get(4) == Some(&b'-')
+        && digits(5..7)
+        && bytes.get(7) == Some(&b'-')
+        && digits(8..10)
+        && bytes.get(10) == Some(&b'-')
+}
+
 pub fn is_valid_name(name: &str) -> bool {
     let Some(stem) = name.strip_suffix(".md") else {
         return false;
@@ -105,6 +128,21 @@ mod tests {
         assert_eq!(parse_number("0007.md"), None);
         assert_eq!(parse_number("00a7-use-rust.md"), None);
         assert_eq!(parse_number("0007_use_rust.md"), None);
+    }
+
+    #[test]
+    fn should_treat_a_numbered_name_as_part_of_the_log() {
+        assert!(is_numbered("0001-use-rust.md"));
+        assert!(is_numbered("0001_use_rust.md"));
+        assert!(is_numbered("2026-use-rust.md"));
+    }
+
+    #[test]
+    fn should_not_treat_a_dated_document_or_other_markdown_as_an_adr() {
+        assert!(!is_numbered("2026-07-01-integration-design.md"));
+        assert!(!is_numbered("README.md"));
+        assert!(!is_numbered("adr-template.md"));
+        assert!(!is_numbered("0001-use-rust.txt"));
     }
 
     #[test]

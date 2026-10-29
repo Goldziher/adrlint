@@ -148,10 +148,17 @@ adrlint lint [PATH]... [--recursive] [--format text|json|github]
 Every command accepts files, directories and glob patterns. A file is checked together with its
 parent directory, so a pre-commit hook that passes only the changed files still sees the numbering
 next to them; a directory is one ADR log; a glob (`adrs/*`, `product/adrs/*`) expands to whatever it
-matches. With no paths, the configured `adr.paths` are used, falling back to `adr.dir`.
+matches. With no paths, the configured `adr.paths` are used, falling back to `adr.dir`. With neither
+configured and no `docs/adr`, the project is searched for ADR logs, so a repository with
+`adrs/<area>/` folders or a service's own `adrs/` needs no configuration at all.
 
-`--recursive` adds every descendant directory that directly contains a numbered ADR, skipping `.git`,
-`target`, `node_modules` and hidden directories. Numbering is still checked per ADR directory, so
+A Markdown file passed explicitly that is not an ADR and sits outside any ADR log (`adrs/README.md`,
+an ADR template) is skipped, so a hook can pass every changed file under `adrs/`.
+
+`--recursive` (or `[adr].recursive = true`) adds every descendant directory that directly contains a
+numbered ADR, skipping `.git`, `target`, `node_modules`, hidden directories and whatever `.gitignore`
+excludes. A date-prefixed document (`2026-07-01-design.md`) is not an ADR and does not make its
+directory a log. Numbering is still checked per ADR directory, so
 `adrs/team-a/0001.md` and `adrs/team-b/0001.md` are independent logs.
 
 ```bash
@@ -303,6 +310,7 @@ dir = "docs/adr"
 paths = ["adrs/*", "product/adrs/*"]
 start = 1 # 0 or 1; used by init and new
 allow_gaps = false # only for imported histories
+recursive = false # search the roots for nested ADR logs, as --recursive does
 
 [lock]
 enabled = true
@@ -399,6 +407,30 @@ repos:
 
 The default `files` pattern covers `adr/`, `adrs/`, `decisions/`, `doc/adr/` and `docs/adr/`. Override
 it in your config when the directory is elsewhere.
+
+## Lefthook
+
+```yaml
+pre-commit:
+  commands:
+    adrlint-format:
+      glob:
+        - "{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
+        - "**/{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
+      run: adrlint format {staged_files}
+      stage_fixed: true
+    adrlint-lint:
+      glob:
+        - "{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
+        - "**/{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
+      run: adrlint lint {staged_files}
+    adrlint-lock:
+      glob: ["**/*.md", "adrlint.lock"]
+      run: adrlint lock --check
+```
+
+A staged ADR is linted with the rest of its log, so a gap or a duplicate number next to it is still
+reported; staged files outside any log, such as an `adrs/README.md` index, are skipped.
 
 ## GitHub Action
 
