@@ -182,7 +182,7 @@ fn the_action_test_pins_the_release_version() {
         .trim()
         .trim_matches('"');
     assert_eq!(
-        value, "0.2.1",
+        value, "0.3.0",
         "the action test must default to the release it exercises"
     );
 }

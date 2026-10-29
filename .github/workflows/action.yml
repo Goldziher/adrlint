@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 env:
-  ADRLINT_ACTION_TEST_VERSION: "0.2.1"
+  ADRLINT_ACTION_TEST_VERSION: "0.3.0"
 
 jobs:
   release:
