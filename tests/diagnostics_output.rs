@@ -165,3 +165,34 @@ fn should_match_text_output_with_the_actions_problem_matcher() {
     assert_eq!(group("severity"), "error", "{text}");
     assert!(group("message").starts_with("expected level 3"), "{text}");
 }
+
+#[test]
+fn should_print_paths_relative_to_the_working_directory() {
+    let directory = project(&[("0001-x.md", misplaced())]);
+
+    let slashed = |output: &Output| stdout(output).replace('\\', "/");
+    let output = run(&directory, &["--no-color", "lint", "docs/adr"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert!(
+        slashed(&output).starts_with("docs/adr/0001-x.md:"),
+        "{}",
+        stdout(&output)
+    );
+
+    let output = run(&directory, &["lint", "--format", "github"]);
+    assert!(
+        slashed(&output).contains("file=docs/adr/0001-x.md,"),
+        "{}",
+        stdout(&output)
+    );
+
+    let output = run(&directory, &["lint", "--format", "json"]);
+    assert!(
+        findings(&output).iter().all(
+            |finding| finding["path"].as_str().map(|path| path.replace('\\', "/")).as_deref()
+                == Some("docs/adr/0001-x.md")
+        ),
+        "{}",
+        stdout(&output)
+    );
+}

@@ -3,8 +3,8 @@ use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
@@ -65,12 +65,13 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
         };
         let outcome = apply_fixes(&loaded, &directories, named.as_ref(), &mode)?;
         for path in &outcome.changed {
-            eprintln!("fixed {}", path.display());
+            eprintln!("fixed {}", shown(path).display());
         }
         refused = !outcome.refused.is_empty() || outcome.failed;
     }
 
-    let collected = collect(&loaded, &directories, true)?;
+    let mut collected = collect(&loaded, &directories, true)?;
+    show_paths(&mut collected.findings);
     if let Some(canonical) = collected.stale {
         report_stale_lock(&lock_path(&loaded), canonical);
     }
@@ -108,9 +109,9 @@ fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCo
 
     for path in &outcome.changed {
         if args.check {
-            println!("would reformat {}", path.display());
+            println!("would reformat {}", shown(path).display());
         } else {
-            println!("reformatted {}", path.display());
+            println!("reformatted {}", shown(path).display());
         }
     }
 
@@ -202,13 +203,13 @@ fn apply_fixes(
         match plan {
             Planned::Unchanged => {}
             Planned::Unreadable(finding) => {
-                eprintln!("adrlint: {}: {}", finding.path.display(), finding.message);
+                eprintln!("adrlint: {}: {}", shown(&finding.path).display(), finding.message);
                 outcome.failed = true;
             }
             Planned::Refused => {
                 eprintln!(
                     "refusing to change locked content of {} (use --force)",
-                    file.path.display()
+                    shown(&file.path).display()
                 );
                 outcome.refused.push(file.path.clone());
             }
@@ -222,7 +223,7 @@ fn apply_fixes(
                 } else {
                     eprintln!(
                         "adrlint: {} changed while it was being fixed; not rewriting it",
-                        file.path.display()
+                        shown(&file.path).display()
                     );
                     outcome.failed = true;
                 }
@@ -437,6 +438,27 @@ fn read_adr(path: &Path) -> std::result::Result<String, Box<diagnostics::Diagnos
             format!("the ADR is not valid UTF-8: {error}"),
         ))
     })
+}
+
+/// The path to show the user: relative to the working directory when it lies under it.
+///
+/// ADR directories are canonicalised so overlapping roots can be compared, which makes every path
+/// absolute. A relative path keeps GitHub annotations and editor links working and drops a Windows
+/// `\\?\` prefix; a path outside the working directory stays absolute.
+fn shown(path: &Path) -> PathBuf {
+    static WORKING_DIRECTORY: OnceLock<Option<PathBuf>> = OnceLock::new();
+    let working = WORKING_DIRECTORY.get_or_init(|| std::env::current_dir().and_then(fs::canonicalize).ok());
+    match working.as_deref().and_then(|working| path.strip_prefix(working).ok()) {
+        Some(relative) if !relative.as_os_str().is_empty() => relative.to_path_buf(),
+        _ => path.to_path_buf(),
+    }
+}
+
+/// Rewrites every finding's path to the form [`shown`] prints.
+fn show_paths(findings: &mut [diagnostics::Diagnostic]) {
+    for finding in findings {
+        finding.path = shown(&finding.path);
+    }
 }
 
 /// Reports a manifest written by another canonical serializer version exactly once.
@@ -836,11 +858,12 @@ fn lock_command(config_path: Option<&Path>, args: LockArgs) -> Result<ExitCode> 
 
     let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
     let Collected {
-        findings,
+        mut findings,
         documents,
         stale,
         ..
     } = collect(&loaded, &directories, true)?;
+    show_paths(&mut findings);
     if diagnostics::has_errors(&findings) {
         report::print(&findings, OutputFormat::Text, true)?;
         if args.check {

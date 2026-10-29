@@ -56,6 +56,8 @@ All notable changes to this project are documented in this file.
   in file names. Text and GitHub spans end at the end of the line's content.
 - `lint --fix` exits 1 when it refused to change a locked ADR.
 - Worker threads get a 16 MiB stack, so a deeply nested ADR cannot overflow one.
+- Findings and fix messages print paths relative to the working directory when they lie under
+  it, so GitHub annotations resolve and Windows output carries no `\\?\` prefix.
 - A configured glob such as `adrs/*` works in a project whose path contains `[`, `]`, `*` or `?`.
 - `format` and `lint --fix` refuse a fix to a locked ADR only when the fix itself changes its
   canonical content: an ADR that already drifted can still be reflowed, and a manifest from another
