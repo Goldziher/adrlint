@@ -30,6 +30,7 @@ path = "src/main.rs"
 anyhow = "1.0.104"
 blake3 = "1.8"
 clap = { version = "4.6", features = ["derive", "color", "wrap_help"] }
+dirs = "7"
 jiff = "0.2"
 owo-colors = "4"
 # The Markdown parse is owned by `adr::parse`; no other module may parse the source.

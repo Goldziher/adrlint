@@ -90,7 +90,7 @@ fn default_start() -> u32 {
 /// rumdl's Markdown layer.
 ///
 /// `rules` holds per-rule settings (`off`, `warn`, `error`) keyed by rumdl's own `MD###` code. The
-/// defaults are applied when the table is parsed and merged under whatever the user wrote, so
+/// defaults are applied when the configuration is built and merged under whatever the user wrote, so
 /// naming one rule never silently re-enables the opinionated defaults.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -111,19 +111,6 @@ impl Default for MarkdownConfig {
 }
 
 impl MarkdownConfig {
-    /// Fills in the opinionated defaults without overriding anything the user set.
-    ///
-    /// Rule codes are matched case-insensitively, so a lower-case `md009` in the configuration turns
-    /// the same rule off instead of silently doing nothing.
-    fn with_defaults(mut self) -> Self {
-        let mut rules = default_markdown_rules();
-        for (code, setting) in std::mem::take(&mut self.rules) {
-            rules.insert(code.trim().to_ascii_uppercase(), setting);
-        }
-        self.rules = rules;
-        self
-    }
-
     /// The configured setting for a rule, if any.
     pub fn setting(&self, code: &str) -> Option<&str> {
         self.rules.get(code).map(|setting| setting.trim())
@@ -149,6 +136,93 @@ fn default_markdown_rules() -> BTreeMap<String, String> {
     ])
 }
 
+/// One configuration file before layering.
+///
+/// Every field is optional so an absent key differs from one explicitly set to its default.
+/// [`Layer::apply_to`] replaces the keys a layer contains and leaves the rest alone, which is what
+/// makes a nested file override only what it names.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Layer {
+    #[serde(default)]
+    adr: AdrLayer,
+    #[serde(default)]
+    lock: LockLayer,
+    #[serde(default)]
+    markdown: MarkdownLayer,
+    #[serde(default)]
+    rules: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AdrLayer {
+    #[serde(default)]
+    dir: Option<PathBuf>,
+    #[serde(default)]
+    start: Option<u32>,
+    #[serde(default)]
+    allow_gaps: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LockLayer {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    path: Option<PathBuf>,
+    #[serde(default)]
+    statuses: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MarkdownLayer {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    rules: BTreeMap<String, String>,
+}
+
+impl Layer {
+    fn apply_to(&self, config: &mut Config) {
+        if let Some(dir) = &self.adr.dir {
+            config.adr.dir = dir.clone();
+        }
+        if let Some(start) = self.adr.start {
+            config.adr.start = start;
+        }
+        if let Some(allow_gaps) = self.adr.allow_gaps {
+            config.adr.allow_gaps = allow_gaps;
+        }
+
+        if let Some(enabled) = self.lock.enabled {
+            config.lock.enabled = enabled;
+        }
+        if let Some(path) = &self.lock.path {
+            config.lock.path = path.clone();
+        }
+        // `statuses` is a whole list, not a fold: a layer that sets it replaces the list above it.
+        if let Some(statuses) = &self.lock.statuses {
+            config.lock.statuses = statuses.clone();
+        }
+
+        if let Some(enabled) = self.markdown.enabled {
+            config.markdown.enabled = enabled;
+        }
+        for (code, setting) in &self.markdown.rules {
+            config
+                .markdown
+                .rules
+                .insert(code.trim().to_ascii_uppercase(), setting.clone());
+        }
+        for (code, setting) in &self.rules {
+            config.rules.insert(code.clone(), setting.clone());
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Loaded {
     pub config: Config,
@@ -156,14 +230,33 @@ pub struct Loaded {
     pub path: Option<PathBuf>,
 }
 
+/// Loads the configuration with the documented precedence, reading the global file from
+/// `dirs::config_dir()`.
 pub fn load(explicit: Option<&Path>) -> Result<Loaded> {
+    let global = dirs::config_dir().map(|directory| directory.join("adrlint").join("config.toml"));
+    load_with_global(explicit, global.as_deref())
+}
+
+/// Loads the configuration with an explicit global path.
+///
+/// This is the testable form of [`load`]: `global` is the user configuration file, or `None` to skip
+/// it. Tests point it at an isolated file so they never read the developer's real global config.
+///
+/// Precedence, highest first: the explicit `--config` file, the nearest project file and its
+/// ancestors outward, `global`, then built-in defaults.
+pub fn load_with_global(explicit: Option<&Path>, global: Option<&Path>) -> Result<Loaded> {
     if let Some(path) = explicit {
         let root = path
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf();
-        let config = read(path)?;
+        let mut config = Config::default();
+        if let Some(global) = global {
+            apply_file(&mut config, global, false)?;
+        }
+        apply_file(&mut config, path, true)?;
+        validate(&config).with_context(|| format!("invalid configuration in {}", path.display()))?;
         return Ok(Loaded {
             config,
             root: absolute(root),
@@ -172,40 +265,62 @@ pub fn load(explicit: Option<&Path>) -> Result<Loaded> {
     }
 
     let cwd = std::env::current_dir().context("reading the current directory")?;
+    let mut config = Config::default();
+    if let Some(global) = global {
+        apply_file(&mut config, global, false)?;
+    }
+
+    // Nearest first. One file per directory: the preferred name wins outright and the deprecated
+    // fallback is not merged in.
+    let mut project = Vec::new();
     for ancestor in cwd.ancestors() {
         for name in CONFIG_FILE_NAMES {
             let candidate = ancestor.join(name);
             if candidate.is_file() {
-                let config = read(&candidate)?;
-                return Ok(Loaded {
-                    config,
-                    root: absolute(ancestor.to_path_buf()),
-                    path: Some(candidate),
-                });
+                project.push(candidate);
+                break;
             }
         }
     }
+    // Apply from the outermost ancestor inward so the nearest file wins.
+    for path in project.iter().rev() {
+        apply_file(&mut config, path, true)?;
+    }
 
+    let path = project.first().cloned();
+    let root = path
+        .as_ref()
+        .and_then(|path| path.parent())
+        .map(Path::to_path_buf)
+        .unwrap_or(cwd);
+    validate(&config).with_context(|| match &path {
+        Some(path) => format!("invalid configuration in {}", path.display()),
+        None => "invalid configuration".to_owned(),
+    })?;
     Ok(Loaded {
-        config: Config::default(),
-        root: absolute(cwd),
-        path: None,
+        config,
+        root: absolute(root),
+        path,
     })
+}
+
+/// Reads one file and folds it into `config`. A missing optional file is skipped; a missing required
+/// file is an error.
+fn apply_file(config: &mut Config, path: &Path, required: bool) -> Result<()> {
+    if !required && !path.is_file() {
+        return Ok(());
+    }
+    let contents =
+        fs::read_to_string(path).with_context(|| format!("reading configuration from {}", path.display()))?;
+    let layer: Layer =
+        toml::from_str(&contents).with_context(|| format!("parsing configuration from {}", path.display()))?;
+    layer.apply_to(config);
+    Ok(())
 }
 
 /// Canonicalises a root when possible; a root that does not exist is kept as given.
 fn absolute(path: PathBuf) -> PathBuf {
     fs::canonicalize(&path).unwrap_or(path)
-}
-
-fn read(path: &Path) -> Result<Config> {
-    let contents =
-        fs::read_to_string(path).with_context(|| format!("reading configuration from {}", path.display()))?;
-    let mut config: Config =
-        toml::from_str(&contents).with_context(|| format!("parsing configuration from {}", path.display()))?;
-    config.markdown = config.markdown.with_defaults();
-    validate(&config).with_context(|| format!("invalid configuration in {}", path.display()))?;
-    Ok(config)
 }
 
 fn validate(config: &Config) -> Result<()> {
@@ -250,10 +365,12 @@ fn validate_relative(path: &Path, field: &str) -> Result<()> {
     if path.is_absolute() {
         bail!("{field} must be relative to the configuration file");
     }
-    if path
-        .components()
-        .any(|component| matches!(component, Component::ParentDir | Component::RootDir))
-    {
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
         bail!("{field} must not escape the project root");
     }
     if path.as_os_str().is_empty() {
@@ -263,15 +380,15 @@ fn validate_relative(path: &Path, field: &str) -> Result<()> {
 }
 
 pub fn render(dir: &Path, start: u32) -> String {
-    let dir = dir.to_string_lossy().replace('\\', "/");
+    let dir = toml::Value::String(render_dir(dir)).to_string();
     format!(
         r#"# adrlint configuration
 #
 # The ADR directory, relative to this file. ADR files are `NNNN-brief-description.md`.
 [adr]
-dir = "{}"
+dir = {dir}
 # 0 or 1. The base is fixed for the life of the directory; do not change it later.
-start = {}
+start = {start}
 # Only for imported histories that legitimately start with holes.
 allow_gaps = false
 
@@ -295,13 +412,33 @@ MD033 = "off"
 [rules]
 # MADR03 = "warn"
 "#,
-        dir, start
     )
+}
+
+/// The ADR directory as it goes into the configuration file.
+///
+/// On Windows the separator is `\` and the file uses `/`; elsewhere a backslash is a literal
+/// character in a directory name and must survive the round-trip.
+fn render_dir(dir: &Path) -> String {
+    let text = dir.to_string_lossy();
+    if cfg!(windows) {
+        text.replace('\\', "/")
+    } else {
+        text.into_owned()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Folds one TOML document over the built-in defaults, exactly as a single config file would be.
+    fn merged(source: &str) -> Config {
+        let mut config = Config::default();
+        let layer: Layer = toml::from_str(source).unwrap();
+        layer.apply_to(&mut config);
+        config
+    }
 
     #[test]
     fn should_reject_start_outside_zero_or_one() {
@@ -353,26 +490,23 @@ mod tests {
 
     #[test]
     fn should_keep_the_defaults_when_only_one_rule_is_configured() {
-        let parsed: Config = toml::from_str("[markdown.rules]\nMD009 = \"off\"\n").unwrap();
-        let markdown = parsed.markdown.with_defaults();
-        assert_eq!(markdown.setting("MD009"), Some("off"));
-        assert_eq!(markdown.setting("MD013"), Some("off"));
-        assert_eq!(markdown.setting("MD033"), Some("off"));
+        let config = merged("[markdown.rules]\nMD009 = \"off\"\n");
+        assert_eq!(config.markdown.setting("MD009"), Some("off"));
+        assert_eq!(config.markdown.setting("MD013"), Some("off"));
+        assert_eq!(config.markdown.setting("MD033"), Some("off"));
     }
 
     #[test]
     fn should_let_an_explicit_setting_override_a_default() {
-        let parsed: Config = toml::from_str("[markdown.rules]\nMD013 = \"error\"\n").unwrap();
-        let markdown = parsed.markdown.with_defaults();
-        assert_eq!(markdown.setting("MD013"), Some("error"));
-        assert!(!markdown.is_off("MD013"));
+        let config = merged("[markdown.rules]\nMD013 = \"error\"\n");
+        assert_eq!(config.markdown.setting("MD013"), Some("error"));
+        assert!(!config.markdown.is_off("MD013"));
     }
 
     #[test]
     fn should_match_rule_codes_case_insensitively() {
-        let parsed: Config = toml::from_str("[markdown.rules]\nmd009 = \"off\"\n").unwrap();
-        let markdown = parsed.markdown.with_defaults();
-        assert!(markdown.is_off("MD009"));
+        let config = merged("[markdown.rules]\nmd009 = \"off\"\n");
+        assert!(config.markdown.is_off("MD009"));
     }
 
     #[test]
@@ -385,7 +519,7 @@ mod tests {
 
     #[test]
     fn should_parse_rule_overrides() {
-        let config: Config = toml::from_str("[rules]\nMADR03 = \"warn\"\n").unwrap();
+        let config = merged("[rules]\nMADR03 = \"warn\"\n");
         assert_eq!(config.rules.get("MADR03").map(String::as_str), Some("warn"));
     }
 
@@ -406,5 +540,28 @@ mod tests {
         let parsed: Config = toml::from_str(&rendered).unwrap();
         assert!(parsed.markdown.enabled);
         assert!(parsed.markdown.is_off("MD013"));
+    }
+
+    #[test]
+    fn should_escape_the_rendered_directory() {
+        let dir = Path::new("weird \"quoted\" \\ plans");
+        let rendered = render(dir, 1);
+        let parsed: Config = toml::from_str(&rendered).expect("the rendered configuration must parse as TOML");
+        assert_eq!(parsed.adr.dir, PathBuf::from(render_dir(dir)));
+        validate(&parsed).expect("the rendered configuration must validate");
+
+        let both = Path::new("quote \"and\" 'apostrophe'");
+        let rendered = render(both, 1);
+        let parsed: Config = toml::from_str(&rendered).expect("the rendered configuration must parse");
+        assert_eq!(parsed.adr.dir, PathBuf::from(render_dir(both)));
+        validate(&parsed).expect("the rendered configuration must validate");
+    }
+
+    #[test]
+    fn should_replace_a_list_rather_than_fold_it() {
+        let mut config = Config::default();
+        let layer: Layer = toml::from_str("[lock]\nstatuses = [\"proposed\"]\n").unwrap();
+        layer.apply_to(&mut config);
+        assert_eq!(config.lock.statuses, vec!["proposed".to_owned()]);
     }
 }
