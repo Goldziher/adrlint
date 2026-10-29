@@ -152,7 +152,10 @@ fn apply_fixes(loaded: &config::Loaded, directories: &[PathBuf], mode: &FixMode)
         LockFile::default()
     };
     let scanned = scan_all(directories)?;
-    let files = scanned.iter().flat_map(|directory| directory.adrs.iter()).collect::<Vec<_>>();
+    let files = scanned
+        .iter()
+        .flat_map(|directory| directory.adrs.iter())
+        .collect::<Vec<_>>();
     let planned = parallel::map(&files, |file| plan_fix(loaded, &manifest, mode, &file.path));
 
     let mut outcome = FixOutcome::default();
@@ -186,7 +189,7 @@ fn apply_fixes(loaded: &config::Loaded, directories: &[PathBuf], mode: &FixMode)
 fn plan_fix(loaded: &config::Loaded, manifest: &LockFile, mode: &FixMode, path: &Path) -> Result<Planned> {
     let source = match read_adr(path) {
         Ok(source) => source,
-        Err(finding) => return Ok(Planned::Unreadable(finding)),
+        Err(finding) => return Ok(Planned::Unreadable(*finding)),
     };
     let fixed = fix::fix_source(&source, path, &loaded.config.markdown, mode.structural)?;
     if fixed == source {
@@ -249,7 +252,10 @@ fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -
         findings.extend(rules::check_directory(directory, &loaded.config.adr));
     }
 
-    let files = scanned.iter().flat_map(|directory| directory.adrs.iter()).collect::<Vec<_>>();
+    let files = scanned
+        .iter()
+        .flat_map(|directory| directory.adrs.iter())
+        .collect::<Vec<_>>();
     let mut documents = Vec::with_capacity(files.len());
     for checked in parallel::map(&files, |file| check_file(loaded, &file.path)) {
         findings.extend(checked.findings);
@@ -291,7 +297,7 @@ fn check_file(loaded: &config::Loaded, path: &Path) -> Checked {
         Ok(source) => source,
         Err(finding) => {
             return Checked {
-                findings: vec![finding],
+                findings: vec![*finding],
                 document: None,
             };
         }
@@ -327,21 +333,32 @@ fn report_unknown_rule_keys(loaded: &config::Loaded) {
 ///
 /// A file over [`MAX_ADR_BYTES`] is reported rather than read: no decision record is that large, and
 /// parsing it would stall the run.
-fn read_adr(path: &Path) -> std::result::Result<String, diagnostics::Diagnostic> {
-    let unreadable =
-        |error: std::io::Error| diagnostics::Diagnostic::error("ADR52", path, 1, format!("cannot read the ADR: {error}"));
+fn read_adr(path: &Path) -> std::result::Result<String, Box<diagnostics::Diagnostic>> {
+    let unreadable = |error: std::io::Error| {
+        Box::new(diagnostics::Diagnostic::error(
+            "ADR52",
+            path,
+            1,
+            format!("cannot read the ADR: {error}"),
+        ))
+    };
     let length = fs::metadata(path).map_err(unreadable)?.len();
     if length > MAX_ADR_BYTES {
-        return Err(diagnostics::Diagnostic::error(
+        return Err(Box::new(diagnostics::Diagnostic::error(
             "ADR52",
             path,
             1,
             format!("the ADR is {length} bytes, over the {MAX_ADR_BYTES} byte limit"),
-        ));
+        )));
     }
     let bytes = fs::read(path).map_err(unreadable)?;
     String::from_utf8(bytes).map_err(|error| {
-        diagnostics::Diagnostic::error("ADR52", path, 1, format!("the ADR is not valid UTF-8: {error}"))
+        Box::new(diagnostics::Diagnostic::error(
+            "ADR52",
+            path,
+            1,
+            format!("the ADR is not valid UTF-8: {error}"),
+        ))
     })
 }
 
@@ -437,10 +454,7 @@ impl Source {
 /// directories, not walked again. A `dir` a configuration names must exist.
 fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<(Vec<Source>, Option<Vec<PathBuf>>)> {
     if !paths.is_empty() {
-        return Ok((
-            paths.iter().map(|path| Source::new(path.clone(), path)).collect(),
-            None,
-        ));
+        return Ok((paths.iter().map(|path| Source::new(path.clone(), path)).collect(), None));
     }
     if !loaded.config.adr.paths.is_empty() {
         let sources = loaded

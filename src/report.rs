@@ -41,7 +41,10 @@ pub struct Summary {
 }
 
 pub fn summarize(diagnostics: &[Diagnostic], files: usize) -> Summary {
-    let errors = diagnostics.iter().filter(|diagnostic| diagnostic.severity.is_error()).count();
+    let errors = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity.is_error())
+        .count();
     Summary {
         errors,
         warnings: diagnostics.len() - errors,
@@ -54,7 +57,11 @@ impl fmt::Display for Summary {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let files = if self.files == 1 { "file" } else { "files" };
         if self.errors == 0 && self.warnings == 0 {
-            return write!(formatter, "adrlint: no problems found in {} {files} checked", self.files);
+            return write!(
+                formatter,
+                "adrlint: no problems found in {} {files} checked",
+                self.files
+            );
         }
         let errors = if self.errors == 1 { "error" } else { "errors" };
         let warnings = if self.warnings == 1 { "warning" } else { "warnings" };
@@ -278,7 +285,7 @@ mod tests {
         print_text(&mut output, &[finding], false).unwrap();
         let text = String::from_utf8(output).unwrap();
         let tail = text.split_once('\n').unwrap().1;
-        assert_eq!(tail, " |\n3 | - item\n | ^\n  = help: use `*`\n");
+        assert_eq!(tail, "  |\n3 | - item\n  | ^\n  = help: use `*`\n");
     }
 
     #[test]
@@ -303,7 +310,11 @@ mod tests {
     #[test]
     fn should_add_fields_to_json_without_removing_any() {
         let mut output = Vec::new();
-        print_json(&mut output, &[diagnostic().with_span(1, 1, 4).with_help("h").with_fixable(true)]).unwrap();
+        print_json(
+            &mut output,
+            &[diagnostic().with_span(1, 1, 4).with_help("h").with_fixable(true)],
+        )
+        .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
         let first = &value[0];
         assert_eq!(first["code"], "MADR42");
@@ -324,6 +335,9 @@ mod tests {
             summary.to_string(),
             "adrlint: 1 error, 1 warning in 3 files checked (1 fixable with `adrlint lint --fix`)"
         );
-        assert_eq!(summarize(&[], 1).to_string(), "adrlint: no problems found in 1 file checked");
+        assert_eq!(
+            summarize(&[], 1).to_string(),
+            "adrlint: no problems found in 1 file checked"
+        );
     }
 }

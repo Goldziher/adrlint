@@ -57,12 +57,15 @@ impl Engine {
     }
 }
 
+/// The engine built for one rule configuration, reused while the configuration stays the same.
+type CachedEngine = (BTreeMap<String, String>, Rc<Engine>);
+
 thread_local! {
     /// The engine last built on this thread, keyed by the `[markdown.rules]` it was built from.
     ///
     /// Building the rule set costs more than linting a small ADR, so a worker thread builds it once
     /// and reuses it for every file it handles.
-    static ENGINE: RefCell<Option<(BTreeMap<String, String>, Rc<Engine>)>> = const { RefCell::new(None) };
+    static ENGINE: RefCell<Option<CachedEngine>> = const { RefCell::new(None) };
 }
 
 fn engine(markdown: &MarkdownConfig) -> Rc<Engine> {

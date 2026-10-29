@@ -106,7 +106,10 @@ pub fn locate(diagnostics: &mut [Diagnostic], source: &str) {
         return;
     }
     let lines = source.lines().collect::<Vec<_>>();
-    for diagnostic in diagnostics.iter_mut().filter(|diagnostic| diagnostic.end_line.is_none()) {
+    for diagnostic in diagnostics
+        .iter_mut()
+        .filter(|diagnostic| diagnostic.end_line.is_none())
+    {
         let Some(text) = diagnostic.line.checked_sub(1).and_then(|index| lines.get(index)) else {
             continue;
         };
