@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use adrlint::adr::parse;
 use adrlint::rules::check_document;
+use tempfile::TempDir;
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
@@ -60,4 +61,70 @@ fn should_accept_the_valid_fixtures() {
         let found = findings(&source, &path);
         assert!(found.is_empty(), "{name} should be clean, found {found:?}");
     }
+}
+
+/// A valid ADR whose `More Information` section holds the links under test.
+fn adr_with_links(links: &str) -> String {
+    format!(
+        "\
+# Links
+
+## Context and Problem Statement
+
+We need to decide how links are checked.
+
+## Considered Options
+
+* Check them
+
+## Decision Outcome
+
+Chosen option: \"Check them\", because broken links are worse than none.
+
+## More Information
+
+{links}
+"
+    )
+}
+
+fn link_codes(root: &Path, links: &str) -> Vec<&'static str> {
+    let path = root.join("docs/adr/0001-links.md");
+    check_document(&parse(&adr_with_links(links)), &path, root)
+        .into_iter()
+        .map(|diagnostic| diagnostic.code)
+        .collect()
+}
+
+#[test]
+fn should_skip_protocol_relative_links() {
+    let directory = TempDir::new().unwrap();
+    let root = directory.path();
+    let codes = link_codes(root, "* [passwd](//etc/passwd)\n* [web](//example.com/x)\n");
+    assert!(
+        codes.is_empty(),
+        "protocol-relative links should be skipped, found {codes:?}"
+    );
+}
+
+#[test]
+fn should_accept_a_root_relative_path_under_the_root() {
+    let directory = TempDir::new().unwrap();
+    let root = directory.path();
+    std::fs::create_dir_all(root.join("docs")).unwrap();
+    std::fs::write(root.join("docs/note.md"), "# Note\n").unwrap();
+
+    let codes = link_codes(root, "* [note](/docs/note.md)\n");
+    assert!(
+        codes.is_empty(),
+        "an existing root-relative path should pass, found {codes:?}"
+    );
+}
+
+#[test]
+fn should_report_a_missing_root_relative_path() {
+    let directory = TempDir::new().unwrap();
+    let root = directory.path();
+    let codes = link_codes(root, "* [missing](/docs/missing.md)\n");
+    assert_eq!(codes, ["MADR12c"]);
 }

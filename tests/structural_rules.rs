@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use adrlint::adr::parse;
-use adrlint::rules::check_structure;
+use adrlint::config::AdrConfig;
+use adrlint::discovery::{AdrFile, Directory};
+use adrlint::rules::{check_directory, check_structure};
 
 fn fixture_path(directory: &Path) -> PathBuf {
     std::fs::read_dir(directory)
@@ -63,5 +65,68 @@ fn should_accept_the_valid_fixtures() {
         let source = std::fs::read_to_string(&path).expect("reading fixture");
         let found = findings(&source, &path);
         assert!(found.is_empty(), "{name} should be clean, found {found:?}");
+    }
+}
+
+#[test]
+fn should_read_the_chosen_option_after_a_subsection() {
+    let source = "\
+# Use Rust
+
+## Context and Problem Statement
+
+We need a decision.
+
+## Considered Options
+
+* Rust
+
+## Decision Outcome
+
+### Consequences
+
+Chosen option: \"Rust\", because it is fast.
+";
+    assert_eq!(findings(source, Path::new("docs/adr/0001-test.md")), []);
+}
+
+fn adr_file(name: &str) -> AdrFile {
+    AdrFile {
+        path: Path::new("docs/adr").join(name),
+        name: name.to_owned(),
+        number: adrlint::discovery::parse_number(name),
+        valid_name: adrlint::discovery::is_valid_name(name),
+    }
+}
+
+fn directory(name: &str) -> Directory {
+    Directory {
+        path: PathBuf::from("docs/adr"),
+        adrs: vec![adr_file(name)],
+        foreign: Vec::new(),
+    }
+}
+
+#[test]
+fn should_compare_the_first_number_with_the_configured_start() {
+    for (start, name, expected) in [
+        (0, "0000-zero.md", false),
+        (0, "0001-one.md", true),
+        (1, "0000-zero.md", true),
+        (1, "0001-one.md", false),
+    ] {
+        let config = AdrConfig {
+            start,
+            ..AdrConfig::default()
+        };
+        let found = check_directory(&directory(name), &config)
+            .into_iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            found.contains(&"MADR41a"),
+            expected,
+            "start {start} with {name} found {found:?}"
+        );
     }
 }

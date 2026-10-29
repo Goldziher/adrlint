@@ -77,7 +77,15 @@ fn check_link(
             }
         }
         Target::RootRelative => {
-            let target = strip_target(&url[1..]);
+            let Some(target) = root_relative_target(url) else {
+                diagnostics.push(Diagnostic::error(
+                    "MADR12c",
+                    path,
+                    link.line,
+                    format!("root-relative path '{url}' is not a repository-relative link"),
+                ));
+                return;
+            };
             if !root.join(target).exists() {
                 diagnostics.push(Diagnostic::error(
                     "MADR12c",
@@ -113,6 +121,11 @@ fn classify(url: &str) -> Target {
         } else {
             Target::External
         };
+    }
+    // `//host/path` is protocol-relative: a browser resolves it to another host, never to the local
+    // project root. Treating it as root-relative would probe `/host/path` on the real filesystem.
+    if url.starts_with("//") {
+        return Target::External;
     }
     if is_windows_absolute(url) {
         return Target::Absolute;
@@ -152,6 +165,19 @@ fn is_windows_absolute(url: &str) -> bool {
 fn strip_target(url: &str) -> &str {
     let end = url.find(['?', '#']).unwrap_or(url.len());
     &url[..end]
+}
+
+/// The path a root-relative destination points at, or `None` when stripping the leading `/` still
+/// leaves an absolute path.
+///
+/// `Path::join` discards the root when its argument is absolute, so joining such a target would
+/// silently probe the host filesystem. Returning `None` turns that into a finding instead.
+fn root_relative_target(url: &str) -> Option<&str> {
+    let target = strip_target(url.strip_prefix('/')?);
+    if target.starts_with('/') || Path::new(target).is_absolute() {
+        return None;
+    }
+    Some(target)
 }
 
 /// GitHub/MADR slugs for every heading, de-duplicated with `-1`, `-2`.
@@ -230,6 +256,8 @@ mod tests {
         assert_eq!(classify("data:text/plain,hi"), Target::External);
         assert_eq!(classify("#decision-outcome"), Target::Anchor);
         assert_eq!(classify("/docs/adr/0001.md"), Target::RootRelative);
+        assert_eq!(classify("//example.com/x"), Target::External);
+        assert_eq!(classify("//etc/passwd"), Target::External);
         assert_eq!(classify("docs/diagram.png"), Target::Relative);
         assert_eq!(classify("./docs/diagram.png"), Target::Relative);
         assert_eq!(classify("C:\\adr\\0001.md"), Target::Absolute);
@@ -244,5 +272,13 @@ mod tests {
         assert_eq!(strip_target("docs/a.md#top"), "docs/a.md");
         assert_eq!(strip_target("docs/a.md?raw=1#top"), "docs/a.md");
         assert_eq!(strip_target("/a.md?raw=1"), "/a.md");
+    }
+
+    #[test]
+    fn should_refuse_a_root_relative_target_that_is_still_absolute() {
+        assert_eq!(root_relative_target("/docs/a.md"), Some("docs/a.md"));
+        assert_eq!(root_relative_target("/docs/a.md#top"), Some("docs/a.md"));
+        assert_eq!(root_relative_target("//etc/passwd"), None);
+        assert_eq!(root_relative_target("//example.com/x"), None);
     }
 }

@@ -163,7 +163,7 @@ fn check_decision_outcome(document: &Document, path: &Path, diagnostics: &mut Ve
     let Some((index, heading)) = section_heading(document, Section::DecisionOutcome) else {
         return;
     };
-    let contents = direct_content(document, index);
+    let contents = section_content(document, index);
 
     let Some(position) = contents
         .iter()
@@ -213,9 +213,14 @@ fn check_single_title(document: &Document, path: &Path, diagnostics: &mut Vec<Di
 }
 
 /// `MADR06`: a known section keeps the heading level the template gives it.
+///
+/// Every heading whose text names a template section is checked, not only the first one: a document
+/// may repeat an alias (`## Context and Problem Statement` plus a nested `### Context`), and each
+/// wrong level is a separate defect. `section_for_title` deliberately matches by text alone, while
+/// the identity-based rules keep using [`section_heading`]'s first-match semantics.
 fn check_heading_levels(document: &Document, path: &Path, diagnostics: &mut Vec<Diagnostic>) {
-    for section in Section::ALL {
-        let Some(heading) = section_heading(document, section).map(|(_, heading)| heading) else {
+    for heading in &document.headings {
+        let Some(section) = section_for_title(&heading.text) else {
             continue;
         };
         if heading.level != section.level() {
@@ -345,10 +350,21 @@ fn section_heading(document: &Document, section: Section) -> Option<(usize, &Hea
     })
 }
 
-/// Block content directly inside the heading at `index`, excluding subsections, in document order.
-fn direct_content(document: &Document, index: usize) -> Vec<Content> {
+/// The template section a heading's text names, if any, regardless of the heading's level.
+fn section_for_title(title: &str) -> Option<Section> {
+    Section::ALL
+        .into_iter()
+        .find(|section| section.titles().iter().any(|alias| title.eq_ignore_ascii_case(alias)))
+}
+
+/// The content belonging to the heading at `index`: everything in its section span, including the
+/// content of nested subsections and excluding the following heading of the same or higher level.
+///
+/// The span is [`Heading::body_end`], the same boundary `MADR02` uses, so a `### Consequences`
+/// subsection does not truncate the parent `Decision Outcome` before its chosen option.
+fn section_content(document: &Document, index: usize) -> Vec<Content> {
     let heading = &document.headings[index];
-    let end = document.headings.get(index + 1).map_or(usize::MAX, |next| next.start);
+    let end = heading.body_end;
 
     let mut contents = Vec::new();
     for block in document
@@ -575,6 +591,52 @@ Chosen option: \"Rust\", because it is fast.
     fn should_report_a_wrong_heading_level() {
         let source = VALID.replace("## Considered Options", "### Considered Options");
         assert_eq!(findings(&source), [("MADR06", 7)]);
+    }
+
+    #[test]
+    fn should_check_every_heading_that_names_a_section() {
+        let source = "\
+# Title
+
+## Context and Problem Statement
+
+Context text.
+
+### Context
+
+More context.
+
+## Considered Options
+
+* One
+
+## Decision Outcome
+
+Chosen option: \"One\", because it works.
+";
+        assert_eq!(findings(source), [("MADR06", 7)]);
+    }
+
+    #[test]
+    fn should_check_the_whole_section_for_the_chosen_option() {
+        let source = "\
+# Use Rust
+
+## Context and Problem Statement
+
+We need a decision.
+
+## Considered Options
+
+* Rust
+
+## Decision Outcome
+
+### Consequences
+
+Chosen option: \"Rust\", because it is fast.
+";
+        assert_eq!(findings(source), []);
     }
 
     #[test]
