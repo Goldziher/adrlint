@@ -130,3 +130,50 @@ fn should_compare_the_first_number_with_the_configured_start() {
         );
     }
 }
+
+/// The numbering rules over a real directory listing, for every name shape AGENTS.md requires.
+#[test]
+fn should_judge_every_file_name_shape_in_one_directory() {
+    let temp = tempfile::TempDir::new().expect("temporary directory");
+    for name in [
+        "0000-zero.md",
+        "0001-use-CC0-or-MIT-as-license.md",
+        "0002-two.md",
+        "0002-also-two.md",
+        "0004-after-a-gap.md",
+        "005-three-digits.md",
+        "00006-five-digits.md",
+        "notes.txt",
+    ] {
+        std::fs::write(temp.path().join(name), "# x\n").expect("writing a file");
+    }
+    let directory = adrlint::discovery::scan(temp.path()).expect("scanning the directory");
+    let config = AdrConfig {
+        start: 0,
+        ..AdrConfig::default()
+    };
+    let mut found = check_directory(&directory, &config)
+        .into_iter()
+        .map(|diagnostic| {
+            let name = diagnostic
+                .path
+                .file_name()
+                .expect("a file name")
+                .to_string_lossy()
+                .into_owned();
+            (diagnostic.code, name)
+        })
+        .collect::<Vec<_>>();
+    found.sort();
+    assert_eq!(
+        found,
+        [
+            ("MADR41b", "0004-after-a-gap.md".to_owned()),
+            ("MADR42", "notes.txt".to_owned()),
+            ("MADR43", "0002-also-two.md".to_owned()),
+            ("MADR43", "0002-two.md".to_owned()),
+            ("MADR44", "00006-five-digits.md".to_owned()),
+            ("MADR44", "005-three-digits.md".to_owned()),
+        ]
+    );
+}

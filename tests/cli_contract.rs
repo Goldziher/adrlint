@@ -368,3 +368,19 @@ fn should_verify_nothing_against_a_stale_lock() {
     assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
     assert!(stderr(&output).contains("canonical version 999"), "{}", stderr(&output));
 }
+
+/// The next number's name is already taken by something discovery does not count as an ADR (here
+/// a directory), so `new` reaches its exclusive create and must refuse rather than replace it.
+#[cfg(unix)]
+#[test]
+fn should_refuse_to_overwrite_an_existing_path_when_creating_an_adr() {
+    let (directory, _) = scaffold();
+    let taken = directory.path().join("docs/adr/0002-use-postgresql.md");
+    fs::create_dir(&taken).expect("occupying the next name");
+    fs::write(taken.join("keep"), "kept").expect("writing inside it");
+
+    let output = run(adrlint().current_dir(directory.path()).args(["new", "Use PostgreSQL"]));
+    assert_ne!(output.status.code(), Some(0), "{}", stdout(&output));
+    assert!(stderr(&output).contains("already exists"), "{}", stderr(&output));
+    assert_eq!(fs::read_to_string(taken.join("keep")).unwrap(), "kept");
+}

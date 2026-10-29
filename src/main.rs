@@ -1085,6 +1085,16 @@ mod tests {
     }
 
     #[test]
+    fn should_never_overwrite_an_existing_adr_when_creating_one() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("0002-taken.md");
+        fs::write(&path, "an accepted decision\n").unwrap();
+        let error = write_new(&path, "a new draft\n").unwrap_err().to_string();
+        assert!(error.contains("already exists"), "{error}");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "an accepted decision\n");
+    }
+
+    #[test]
     fn should_not_rewrite_a_file_that_changed_since_it_was_planned() {
         let directory = tempfile::TempDir::new().unwrap();
         let path = directory.path().join("0001-x.md");
