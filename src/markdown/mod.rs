@@ -6,4 +6,4 @@
 
 pub mod rumdl;
 
-pub use rumdl::{check, format};
+pub use rumdl::{check, format, rule_codes};

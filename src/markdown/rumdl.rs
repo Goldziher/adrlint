@@ -4,9 +4,10 @@
 //! are active: a rule set to `off` produces no finding and no fix.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result, anyhow};
 use rumdl_lib::config::{Config as RumdlConfig, RuleConfig};
@@ -55,6 +56,19 @@ impl Engine {
         let rules = filter_rules(&all, &config.global);
         Self { config, codes, rules }
     }
+}
+
+/// Every code a Markdown finding can carry: rumdl's rule names, plus the fallback for a warning
+/// that names no rule. Built once from rumdl's own rule list, so it follows a rumdl upgrade.
+pub fn rule_codes() -> &'static BTreeSet<String> {
+    static CODES: OnceLock<BTreeSet<String>> = OnceLock::new();
+    CODES.get_or_init(|| {
+        all_rules(&RumdlConfig::default())
+            .iter()
+            .map(|rule| rule.name().to_ascii_uppercase())
+            .chain([FALLBACK_CODE.to_owned()])
+            .collect()
+    })
 }
 
 /// The engine built for one rule configuration, reused while the configuration stays the same.

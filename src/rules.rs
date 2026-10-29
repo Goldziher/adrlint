@@ -58,8 +58,7 @@ fn longest_rule_setting<'a>(rules: &'a BTreeMap<String, String>, code: &str) -> 
 /// Every finding code the MADR and ADR rule sets can emit.
 ///
 /// Kept next to [`apply_overrides`] because the two must agree: a key is only meaningful when it can
-/// prefix one of these codes. Markdown codes (`MD###`) are handled by [`unknown_rule_keys`] against
-/// the separate `[markdown.rules]` table.
+/// prefix one of these codes or one of rumdl's (`MD###`), which [`apply_overrides`] also covers.
 const IMPLEMENTED_CODES: &[&str] = &[
     "MADR01a", "MADR01b", "MADR01c", "MADR01d", "MADR02", "MADR03a", "MADR03b", "MADR04", "MADR05", "MADR06",
     "MADR07a", "MADR07b", "MADR08a", "MADR08b", "MADR12a", "MADR12b", "MADR12c", "MADR12d", "MADR21", "MADR31",
@@ -77,8 +76,10 @@ const IMPLEMENTED_CODES: &[&str] = &[
 /// `MADR03b`, and `MADR03b` configures only that variant. A key that is longer than, or diverges
 /// from, every implemented code — `MADR99`, `MADR0é` — does nothing and is returned.
 ///
-/// A `[markdown.rules]` key is known when it is an exact `MD` + three-digit code; rumdl exposes no
-/// other rule name, and the Markdown layer matches settings by exact code.
+/// `[rules]` also applies to Markdown findings, so a key that prefixes one of rumdl's codes is known.
+///
+/// A `[markdown.rules]` key is known when it is exactly one of rumdl's rule codes, ignoring case; the
+/// Markdown layer matches settings by exact code, so `MD999` is reported.
 ///
 /// The result is sorted, deduplicated and trimmed; an empty result means every key binds.
 pub fn unknown_rule_keys(rules: &BTreeMap<String, String>, markdown: &BTreeMap<String, String>) -> Vec<String> {
@@ -101,15 +102,14 @@ pub fn unknown_rule_keys(rules: &BTreeMap<String, String>, markdown: &BTreeMap<S
 }
 
 fn is_implemented_prefix(key: &str) -> bool {
+    let prefixes = |code: &str| code.get(..key.len()).is_some_and(|head| head.eq_ignore_ascii_case(key));
     !key.is_empty()
-        && IMPLEMENTED_CODES
-            .iter()
-            .any(|code| code.get(..key.len()).is_some_and(|head| head.eq_ignore_ascii_case(key)))
+        && (IMPLEMENTED_CODES.iter().any(|code| prefixes(code))
+            || crate::markdown::rule_codes().iter().any(|code| prefixes(code)))
 }
 
 fn is_markdown_code(key: &str) -> bool {
-    let bytes = key.as_bytes();
-    bytes.len() == 5 && bytes[..2].eq_ignore_ascii_case(b"MD") && bytes[2..].iter().all(u8::is_ascii_digit)
+    crate::markdown::rule_codes().contains(&key.to_ascii_uppercase())
 }
 
 /// Runs every document-level rule against one parsed ADR.
@@ -356,24 +356,31 @@ mod tests {
 
     #[test]
     fn should_report_rule_keys_that_match_nothing() {
-        let rules = settings(&["MADR99", "MADR0é", "MADR03z", "MD009"]);
+        let rules = settings(&["MADR99", "MADR0é", "MADR03z", "MD999"]);
         assert_eq!(
             unknown_rule_keys(&rules, &settings(&[])),
-            ["MADR03z", "MADR0é", "MADR99", "MD009"]
+            ["MADR03z", "MADR0é", "MADR99", "MD999"]
         );
     }
 
     #[test]
-    fn should_accept_every_well_formed_markdown_code() {
+    fn should_accept_a_markdown_code_in_the_rules_table() {
+        // `apply_overrides` applies `[rules]` to rumdl findings too, so the key is not unknown.
+        let rules = settings(&["MD009", "md013", "MD0", "MD"]);
+        assert_eq!(unknown_rule_keys(&rules, &settings(&[])), Vec::<String>::new());
+    }
+
+    #[test]
+    fn should_accept_every_rumdl_markdown_code() {
         assert!(unknown_rule_keys(&BTreeMap::new(), &settings(&["MD004", "md013", "MD000"])).is_empty());
     }
 
     #[test]
-    fn should_report_malformed_markdown_codes() {
-        let markdown = settings(&["MD13", "MD0133", "MD0é3", "MD-01", ""]);
+    fn should_report_malformed_or_unknown_markdown_codes() {
+        let markdown = settings(&["MD13", "MD0133", "MD0é3", "MD-01", "MD999", ""]);
         assert_eq!(
             unknown_rule_keys(&BTreeMap::new(), &markdown),
-            ["", "MD-01", "MD0133", "MD0é3", "MD13"]
+            ["", "MD-01", "MD0133", "MD0é3", "MD13", "MD999"]
         );
     }
 
