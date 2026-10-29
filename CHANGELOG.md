@@ -55,6 +55,8 @@ All notable changes to this project are documented in this file.
 - A path that exists is read literally even if it holds `[`, and GitHub annotations escape `:` and `,`
   in file names. Text and GitHub spans end at the end of the line's content.
 - `lint --fix` exits 1 when it refused to change a locked ADR.
+- `adr.dir`, `adr.paths` and `lock.path` reject a Windows drive (`C:\x`) or UNC (`\\host\share`) path
+  on every platform, with the same check the lock manifest's keys use.
 - Text output replaces control characters in the quoted source line, the message, the help and
   the path with U+FFFD, so an escape sequence or carriage return in an ADR cannot rewrite the
   terminal or forge a CI log line.

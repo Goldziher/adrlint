@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
+
+use crate::lock::RootEscape;
 
 pub const CONFIG_FILE_NAMES: [&str; 2] = [".adrlint.toml", "adrlint.toml"];
 
@@ -423,21 +425,16 @@ pub fn validate_dir(dir: &Path) -> Result<()> {
 }
 
 fn validate_relative(path: &Path, field: &str) -> Result<()> {
-    if path.is_absolute() {
-        bail!("{field} must be relative to the configuration file");
-    }
-    if path.components().any(|component| {
-        matches!(
-            component,
-            Component::ParentDir | Component::RootDir | Component::Prefix(_)
-        )
-    }) {
-        bail!("{field} must not escape the project root");
-    }
     if path.as_os_str().is_empty() {
         bail!("{field} must not be empty");
     }
-    Ok(())
+    match crate::lock::escape_from_root(&path.to_string_lossy()) {
+        Some(RootEscape::Absolute | RootEscape::Drive) => {
+            bail!("{field} must be relative to the configuration file")
+        }
+        Some(RootEscape::Parent) => bail!("{field} must not escape the project root"),
+        None => Ok(()),
+    }
 }
 
 pub fn render(dir: &Path, start: u32) -> String {
@@ -539,6 +536,29 @@ mod tests {
         };
         let error = validate(&config).unwrap_err().to_string();
         assert!(error.contains("adr.start must be 0 or 1"));
+    }
+
+    #[test]
+    fn should_reject_windows_absolute_paths_on_every_platform() {
+        for (path, expected) in [
+            (r"C:\adr", "must be relative"),
+            ("C:/adr", "must be relative"),
+            (r"\\host\share\adr", "must be relative"),
+            (r"\adr", "must be relative"),
+            (r"docs\..\..\adr", "must not escape"),
+        ] {
+            let error = validate_dir(Path::new(path)).unwrap_err().to_string();
+            assert!(error.contains(expected), "{path}: {error}");
+            let config = Config {
+                lock: LockConfig {
+                    path: PathBuf::from(path),
+                    ..LockConfig::default()
+                },
+                ..Config::default()
+            };
+            let error = validate(&config).unwrap_err().to_string();
+            assert!(error.contains(expected), "{path}: {error}");
+        }
     }
 
     #[test]

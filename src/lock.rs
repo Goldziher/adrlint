@@ -155,31 +155,55 @@ fn validate_key(key: &str) -> Result<()> {
     if key.trim().is_empty() {
         bail!("lock file key must not be empty");
     }
-    if key.starts_with('/') || key.starts_with('\\') {
-        bail!("lock file key {key:?} must be relative to the project root");
+    match escape_from_root(key) {
+        Some(RootEscape::Absolute) => bail!("lock file key {key:?} must be relative to the project root"),
+        Some(RootEscape::Drive) => bail!("lock file key {key:?} must not start with a drive prefix"),
+        Some(RootEscape::Parent) => bail!("lock file key {key:?} must not escape the project root"),
+        None => Ok(()),
     }
-    let mut characters = key.chars();
+}
+
+/// How a path written in configuration or a manifest leaves the project root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RootEscape {
+    /// Rooted: `/x`, `\x`, or a Windows UNC path such as `\\host\share`.
+    Absolute,
+    /// A Windows drive prefix such as `C:`.
+    Drive,
+    /// A `..` component, with either separator.
+    Parent,
+}
+
+/// Whether `text` leaves the project root on any platform.
+///
+/// The check is textual, so a Windows drive or UNC path is rejected on every host: a configuration or
+/// manifest written on one platform is read on all of them.
+pub(crate) fn escape_from_root(text: &str) -> Option<RootEscape> {
+    if text.starts_with('/') || text.starts_with('\\') {
+        return Some(RootEscape::Absolute);
+    }
+    let mut characters = text.chars();
     if let (Some(first), Some(':')) = (characters.next(), characters.next())
         && first.is_ascii_alphabetic()
     {
-        bail!("lock file key {key:?} must not start with a drive prefix");
+        return Some(RootEscape::Drive);
     }
-    let path = Path::new(key);
+    let path = Path::new(text);
     if path.is_absolute() {
-        bail!("lock file key {key:?} must be relative to the project root");
+        return Some(RootEscape::Absolute);
     }
-    if path.components().any(|component| {
-        matches!(
-            component,
-            Component::ParentDir | Component::RootDir | Component::Prefix(_)
-        )
-    }) {
-        bail!("lock file key {key:?} must not escape the project root");
+    if path
+        .components()
+        .any(|component| matches!(component, Component::RootDir | Component::Prefix(_)))
+    {
+        return Some(RootEscape::Absolute);
     }
-    if key.split(['/', '\\']).any(|part| part == "..") {
-        bail!("lock file key {key:?} must not escape the project root");
+    if path.components().any(|component| component == Component::ParentDir)
+        || text.split(['/', '\\']).any(|part| part == "..")
+    {
+        return Some(RootEscape::Parent);
     }
-    Ok(())
+    None
 }
 
 /// Writes a lock file as sorted, stable TOML with a single trailing newline.
