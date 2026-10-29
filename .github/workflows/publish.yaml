@@ -749,11 +749,12 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Deliberately checked out at the workflow revision, not the tag: this job only needs the
+      # generator script and the published assets, and older tags may predate the script.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Generate manifest and push to the Scoop bucket
         env:
