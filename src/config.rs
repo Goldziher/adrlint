@@ -15,9 +15,21 @@ pub struct Config {
     #[serde(default)]
     pub lock: LockConfig,
     #[serde(default)]
+    pub lint: LintConfig,
+    #[serde(default)]
     pub markdown: MarkdownConfig,
     #[serde(default)]
     pub rules: BTreeMap<String, String>,
+}
+
+/// Opt-in lint checks that need more than the ADR files themselves.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LintConfig {
+    /// Whether `MADR11` checks that external links resolve. Not implemented yet: enabling it is a
+    /// configuration error rather than a silent no-op.
+    #[serde(default)]
+    pub check_external_links: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -165,6 +177,8 @@ struct Layer {
     #[serde(default)]
     lock: LockLayer,
     #[serde(default)]
+    lint: LintLayer,
+    #[serde(default)]
     markdown: MarkdownLayer,
     #[serde(default)]
     rules: BTreeMap<String, String>,
@@ -194,6 +208,13 @@ struct LockLayer {
     path: Option<PathBuf>,
     #[serde(default)]
     statuses: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LintLayer {
+    #[serde(default)]
+    check_external_links: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -234,6 +255,10 @@ impl Layer {
         // `statuses` is a whole list, not a fold: a layer that sets it replaces the list above it.
         if let Some(statuses) = &self.lock.statuses {
             config.lock.statuses = statuses.clone();
+        }
+
+        if let Some(check) = self.lint.check_external_links {
+            config.lint.check_external_links = check;
         }
 
         if let Some(enabled) = self.markdown.enabled {
@@ -360,6 +385,11 @@ fn validate(config: &Config) -> Result<()> {
         validate_relative(path, "adr.paths")?;
     }
     validate_relative(&config.lock.path, "lock.path")?;
+    if config.lint.check_external_links {
+        bail!(
+            "lint.check_external_links is not supported yet: external link checking (MADR11) is not implemented; remove the key or set it to false"
+        );
+    }
     if config.lock.statuses.iter().any(|status| status.trim().is_empty()) {
         bail!("lock.statuses must not contain empty values");
     }
@@ -476,6 +506,26 @@ mod tests {
         let layer: Layer = toml::from_str(source).unwrap();
         layer.apply_to(&mut config);
         config
+    }
+
+    #[test]
+    fn should_accept_a_lint_table_with_external_links_disabled() {
+        let config = merged("[lint]\ncheck_external_links = false\n");
+        assert!(!config.lint.check_external_links);
+        assert!(validate(&config).is_ok());
+    }
+
+    #[test]
+    fn should_reject_external_link_checking_until_it_is_implemented() {
+        let config = merged("[lint]\ncheck_external_links = true\n");
+        assert!(config.lint.check_external_links);
+        let error = validate(&config).unwrap_err().to_string();
+        assert!(error.contains("not supported yet"), "{error}");
+    }
+
+    #[test]
+    fn should_reject_unknown_lint_keys() {
+        assert!(toml::from_str::<Layer>("[lint]\nbogus = true\n").is_err());
     }
 
     #[test]
