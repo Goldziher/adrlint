@@ -413,7 +413,7 @@ fn should_report_a_foreign_file_in_a_discovered_adr_directory() {
             diagnostic["code"] == "MADR44"
                 && diagnostic["path"]
                     .as_str()
-                    .is_some_and(|path| path.ends_with("adrs/team-a/README.md"))
+                    .is_some_and(|path| path.replace('\\', "/").ends_with("adrs/team-a/README.md"))
         }),
         "a directory that holds ADRs still rejects a Markdown file that is not an ADR: {}",
         stdout(&output)
