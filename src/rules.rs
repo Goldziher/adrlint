@@ -46,6 +46,11 @@ pub fn apply_overrides(findings: &mut Vec<Diagnostic>, rules: &BTreeMap<String, 
     });
 }
 
+/// Whether `[rules]` turns `code` off, so a check that is expensive to run can be skipped.
+pub fn is_off(rules: &BTreeMap<String, String>, code: &str) -> bool {
+    longest_rule_setting(rules, code).is_some_and(|setting| setting.trim().eq_ignore_ascii_case("off"))
+}
+
 fn longest_rule_setting<'a>(rules: &'a BTreeMap<String, String>, code: &str) -> Option<&'a String> {
     rules
         .iter()

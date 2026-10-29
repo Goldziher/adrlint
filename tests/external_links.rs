@@ -276,14 +276,14 @@ fn should_fail_the_run_when_configured_as_an_error() {
 }
 
 #[test]
-fn should_drop_findings_when_turned_off() {
+fn should_make_no_request_when_turned_off() {
     let (address, requests) = serve();
     let (_directory, config) = project(address, "", "[rules]\nMADR11 = \"off\"\n");
 
     let output = lint(&config, &["--check-external-links"]);
     assert!(output.status.success());
     assert!(findings(&output).is_empty());
-    assert!(!sorted_requests(&requests).is_empty(), "the flag still runs the check");
+    assert!(sorted_requests(&requests).is_empty(), "an off rule makes no request");
 }
 
 #[test]

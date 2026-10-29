@@ -70,7 +70,8 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
         refused = !outcome.refused.is_empty() || outcome.failed;
     }
 
-    let external = args.check_external_links(loaded.config.lint.check_external_links);
+    let external = args.check_external_links(loaded.config.lint.check_external_links)
+        && !rules::is_off(&loaded.config.rules, "MADR11");
     let mut collected = collect(&loaded, &directories, true, external)?;
     show_paths(&mut collected.findings);
     if let Some(canonical) = collected.stale {
