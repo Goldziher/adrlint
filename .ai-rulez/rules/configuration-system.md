@@ -26,7 +26,7 @@ merged in.
 
 ### Shape
 
-The 0.2.0 release parses `[adr]`, `[lock]`, `[markdown]` and `[rules]`. A key from `[lint]` is an
+The 0.2.1 release parses `[adr]`, `[lock]`, `[markdown]` and `[rules]`. A key from `[lint]` is an
 unknown-key error until external link checking lands, rather than a silent no-op.
 
 ```toml

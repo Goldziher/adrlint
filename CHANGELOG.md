@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## 0.2.1 - 2026-10-29
+
+### Fixed
+
+- `--recursive` no longer treats the traversal root as an ADR log, so `adrlint lint --recursive .`
+  does not report the repository README or `.adrlint.toml` as foreign ADR files. A directory is
+  scanned only when it directly holds a numbered ADR; the foreign-file rule still applies inside a
+  discovered log.
+
 ## 0.2.0 - 2026-10-29
 
 ### Added

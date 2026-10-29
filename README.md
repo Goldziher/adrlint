@@ -37,7 +37,7 @@ adrlint is built to check all four in one run, from one parse, with one exit cod
 
 ## Status
 
-adrlint is at **0.2.0** and under active construction. The implemented surface is:
+adrlint is at **0.2.1** and under active construction. The implemented surface is:
 
 - `adrlint lint` — `MADR01`–`MADR08` structural rules, `MADR12`/`MADR21`/`MADR31` integrity and
   style rules, `MADR41`–`MADR44` directory rules, `ADR50`–`ADR52` immutability and readability
@@ -150,7 +150,7 @@ parent directory, so a pre-commit hook that passes only the changed files still 
 next to them; a directory is one ADR log; a glob (`adrs/*`, `product/adrs/*`) expands to whatever it
 matches. With no paths, the configured `adr.paths` are used, falling back to `adr.dir`.
 
-`--recursive` adds every descendant directory that directly contains Markdown, skipping `.git`,
+`--recursive` adds every descendant directory that directly contains a numbered ADR, skipping `.git`,
 `target`, `node_modules` and hidden directories. Numbering is still checked per ADR directory, so
 `adrs/team-a/0001.md` and `adrs/team-b/0001.md` are independent logs.
 
@@ -390,7 +390,7 @@ edited. `adrlint new` is the only writer that assigns a number.
 ```yaml
 repos:
   - repo: https://github.com/Goldziher/adrlint
-    rev: v0.2.0
+    rev: v0.2.1
     hooks:
       - id: adrlint-lint
       - id: adrlint

@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.9.2'
 scope = 'all'
-tree = 'sha256:5093c9b3f51c769e2f54a990a6c61a6ed77944e59dd6302584fd18be81a213ea'
+tree = 'sha256:d1034491b6f1313363c285b04be4fd3a318a1866b2c81270ada4fc6456d658d2'
 
 [[served]]
 name = 'build'
@@ -148,7 +148,7 @@ digest = 'sha256:6e41ae4ac949913d19fe0a5d21b4a43a99223bfb1377c82ab2011c06332d6bb
 kind = 'context'
 id = 'architecture'
 path = 'context/architecture.md'
-digest = 'sha256:f3022841eb7561496180775450e3d5c2115e1d9fed05e375b5e4425a7b6f909d'
+digest = 'sha256:256a18a71a8723b4cc458f522829c311b38b98221e5e67c879faad6545f1374b'
 
 [[item]]
 kind = 'context'
@@ -172,7 +172,7 @@ digest = 'sha256:c78115a5173a18ebceae477cb22e7f0b05e90298c29932a85a6c4c215ddb71e
 kind = 'rule'
 id = 'configuration-system'
 path = 'rules/configuration-system.md'
-digest = 'sha256:09939bcf25e9623678462f50847fec5dbcbcfb44291a3bfc00e6612a5f01fd1f'
+digest = 'sha256:508b226b95b7ce6b43317dffef6e17dd06c595b54f45dc407df560b47dc469f5'
 
 [[item]]
 kind = 'rule'
@@ -190,7 +190,7 @@ digest = 'sha256:2ac431499fc671a858d11f9a1cee5a9f1bdbed8fd0b0bd5747d2a9d0feeb4b3
 kind = 'rule'
 id = 'markdown-pipeline'
 path = 'rules/markdown-pipeline.md'
-digest = 'sha256:f59872e637cef72a47d9709222be09dff24e06592a54aefd82ab1905dca910f5'
+digest = 'sha256:e1b254c72dda402b2ac27831680f01ab07693c69c3b4861e1cb09dae49436ba4'
 
 [[item]]
 kind = 'rule'
