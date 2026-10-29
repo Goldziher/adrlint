@@ -229,24 +229,28 @@ fn plan_fix(loaded: &config::Loaded, manifest: &LockFile, mode: &FixMode, path: 
     if fixed == source {
         return Ok(Planned::Unchanged);
     }
-    if !mode.force && changes_locked_content(loaded, manifest, path, &fixed) {
+    if !mode.force && changes_locked_content(loaded, manifest, path, &source, &fixed) {
         return Ok(Planned::Refused);
     }
     Ok(Planned::Write(fixed))
 }
 
-/// Whether writing `formatted` would change the canonical content of a locked ADR.
+/// Whether writing `formatted` over `source` would change the canonical content of a locked ADR.
 ///
-/// A stale manifest is ignored: its hashes belong to another serializer version and cannot be
-/// trusted, so it must not block formatting.
-fn changes_locked_content(loaded: &config::Loaded, manifest: &LockFile, path: &Path, formatted: &str) -> bool {
-    if !manifest.is_current() {
+/// The fix is compared with the file as it is, both hashed by the current serializer, not with the
+/// manifest: an ADR that already drifted (ADR50) can still be reflowed, and a manifest written by
+/// another serializer version still protects its entries from a content change.
+fn changes_locked_content(
+    loaded: &config::Loaded,
+    manifest: &LockFile,
+    path: &Path,
+    source: &str,
+    formatted: &str,
+) -> bool {
+    if manifest.entry(&lock::key(&loaded.root, path)).is_none() {
         return false;
     }
-    let Some(entry) = manifest.entry(&lock::key(&loaded.root, path)) else {
-        return false;
-    };
-    lock::canonical_hash(&adr::parse(formatted)) != entry.blake3
+    lock::canonical_hash(&adr::parse(formatted)) != lock::canonical_hash(&adr::parse(source))
 }
 
 /// Everything one lint run learned.

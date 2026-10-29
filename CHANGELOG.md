@@ -52,6 +52,9 @@ All notable changes to this project are documented in this file.
   in file names. Text and GitHub spans end at the end of the line's content.
 - `lint --fix` exits 1 when it refused to change a locked ADR.
 - Worker threads get a 16 MiB stack, so a deeply nested ADR cannot overflow one.
+- `format` and `lint --fix` refuse a fix to a locked ADR only when the fix itself changes its
+  canonical content: an ADR that already drifted can still be reflowed, and a manifest from another
+  canonical version no longer lets a content-changing fix through without `--force`.
 
 - A date-prefixed document (`2026-07-01-design.md`) no longer makes its directory an ADR log, so
   `--recursive .` stops reporting plans and specs as ADRs.

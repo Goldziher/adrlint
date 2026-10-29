@@ -135,13 +135,6 @@ fn should_write_formatting_the_canonical_hash_ignores() {
 #[test]
 fn should_not_let_a_stale_lock_block_formatting() {
     let (directory, adr) = scaffold();
-    add_bare_url(&adr);
-    fs::write(
-        directory.path().join(".adrlint.toml"),
-        "[markdown.rules]\nMD034 = \"warn\"\n\n[rules]\nMD034 = \"warn\"\n",
-    )
-    .expect("writing the configuration");
-
     let output = run(adrlint().current_dir(directory.path()).arg("lock"));
     assert!(output.status.success(), "{}", stderr(&output));
 
@@ -149,6 +142,7 @@ fn should_not_let_a_stale_lock_block_formatting() {
     let manifest = fs::read_to_string(&manifest_path).expect("reading the lock file");
     fs::write(&manifest_path, manifest.replace("canonical = 1", "canonical = 999")).expect("ageing the lock");
 
+    add_trailing_spaces(&adr);
     let output = run(adrlint().current_dir(directory.path()).arg("format"));
     assert!(
         output.status.success(),
@@ -156,7 +150,76 @@ fn should_not_let_a_stale_lock_block_formatting() {
         stderr(&output)
     );
     let formatted = fs::read_to_string(&adr).expect("reading the formatted ADR");
-    assert!(formatted.contains("<https://example.com>"), "{formatted}");
+    assert!(
+        !formatted.contains("sentences.   "),
+        "MD009 should have run: {formatted}"
+    );
+}
+
+#[test]
+fn should_refuse_a_content_change_to_a_locked_adr_under_a_stale_lock() {
+    let (directory, adr) = scaffold();
+    fs::write(
+        directory.path().join(".adrlint.toml"),
+        "[markdown.rules]\nMD034 = \"warn\"\n\n[rules]\nMD034 = \"warn\"\n",
+    )
+    .expect("writing the configuration");
+    let output = run(adrlint().current_dir(directory.path()).arg("lock"));
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    let manifest_path = directory.path().join("adrlint.lock");
+    let manifest = fs::read_to_string(&manifest_path).expect("reading the lock file");
+    fs::write(&manifest_path, manifest.replace("canonical = 1", "canonical = 999")).expect("ageing the lock");
+    add_bare_url(&adr);
+    let before = fs::read(&adr).expect("reading the ADR");
+
+    let output = run(adrlint().current_dir(directory.path()).arg("format"));
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert!(stderr(&output).contains("(use --force)"), "{}", stderr(&output));
+    assert_eq!(
+        fs::read(&adr).unwrap(),
+        before,
+        "a stale lock must not let format change content"
+    );
+
+    let output = run(adrlint().current_dir(directory.path()).args(["format", "--force"]));
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(fs::read_to_string(&adr).unwrap().contains("<https://example.com>"));
+}
+
+#[test]
+fn should_write_a_reflow_of_a_locked_adr_that_already_drifted() {
+    let (directory, adr) = scaffold();
+    let output = run(adrlint().current_dir(directory.path()).arg("lock"));
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    // A content edit after locking: ADR50 until it is unlocked.
+    let source = fs::read_to_string(&adr).expect("reading the ADR");
+    fs::write(
+        &adr,
+        source.replacen("two or three sentences", "two or four sentences", 1),
+    )
+    .expect("editing");
+    add_trailing_spaces_after(&adr, "two or four sentences.");
+
+    let output = run(adrlint().current_dir(directory.path()).arg("format"));
+    assert!(
+        output.status.success(),
+        "a formatting-only fix must not be refused because of earlier drift: {}",
+        stderr(&output)
+    );
+    let formatted = fs::read_to_string(&adr).expect("reading the formatted ADR");
+    assert!(
+        !formatted.contains("sentences.   "),
+        "MD009 should have run: {formatted}"
+    );
+}
+
+fn add_trailing_spaces_after(path: &Path, text: &str) {
+    let source = fs::read_to_string(path).expect("reading the ADR");
+    let spaced = source.replacen(text, &format!("{text}   "), 1);
+    assert_ne!(spaced, source, "the ADR must contain {text:?}");
+    fs::write(path, spaced).expect("writing the ADR");
 }
 
 #[cfg(unix)]
