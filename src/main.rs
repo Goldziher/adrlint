@@ -54,17 +54,20 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
     let loaded = config::load(config_path)?;
     report_unknown_rule_keys(&loaded);
     let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
+    let named = named_files(&args.paths);
 
+    let mut refused = false;
     if args.fix {
         let mode = FixMode {
             check: false,
             force: args.force,
             structural: true,
         };
-        let outcome = apply_fixes(&loaded, &directories, &mode)?;
+        let outcome = apply_fixes(&loaded, &directories, named.as_ref(), &mode)?;
         for path in &outcome.changed {
             eprintln!("fixed {}", path.display());
         }
+        refused = !outcome.refused.is_empty();
     }
 
     let collected = collect(&loaded, &directories, true)?;
@@ -76,7 +79,8 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
         eprintln!("{}", report::summarize(&collected.findings, collected.files));
     }
 
-    if diagnostics::has_errors(&collected.findings) {
+    // A fix refused on a locked ADR leaves the file as it was: the run did not do what was asked.
+    if diagnostics::has_errors(&collected.findings) || refused {
         Ok(ExitCode::from(1))
     } else {
         Ok(ExitCode::SUCCESS)
@@ -94,12 +98,13 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
 fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCode> {
     let loaded = config::load(config_path)?;
     let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
+    let named = named_files(&args.paths);
     let mode = FixMode {
         check: args.check,
         force: args.force,
         structural: false,
     };
-    let outcome = apply_fixes(&loaded, &directories, &mode)?;
+    let outcome = apply_fixes(&loaded, &directories, named.as_ref(), &mode)?;
 
     for path in &outcome.changed {
         if args.check {
@@ -141,11 +146,32 @@ enum Planned {
     Write(String),
 }
 
-/// Fixes every ADR in `directories`.
+/// The files to fix when the paths name only files, as a hook passing its staged files does.
+///
+/// A file is still linted with its whole log, but only the named files are rewritten: a hook must not
+/// reformat a sibling ADR with unstaged changes. Any directory or pattern among the paths fixes whole
+/// logs, as does running with no paths.
+fn named_files(paths: &[PathBuf]) -> Option<BTreeSet<PathBuf>> {
+    if paths.is_empty()
+        || paths
+            .iter()
+            .any(|path| path.is_dir() || (is_glob(path) && !path.exists()))
+    {
+        return None;
+    }
+    Some(paths.iter().filter_map(|path| fs::canonicalize(path).ok()).collect())
+}
+
+/// Fixes every numbered ADR in `directories`, or only the `named` ones.
 ///
 /// Each file is read once and its fixed form is computed in parallel; the writes then happen in file
 /// order, so the report is identical across runs.
-fn apply_fixes(loaded: &config::Loaded, directories: &[PathBuf], mode: &FixMode) -> Result<FixOutcome> {
+fn apply_fixes(
+    loaded: &config::Loaded,
+    directories: &[PathBuf],
+    named: Option<&BTreeSet<PathBuf>>,
+    mode: &FixMode,
+) -> Result<FixOutcome> {
     let manifest = if loaded.config.lock.enabled {
         lock::load(&lock_path(loaded))?
     } else {
@@ -157,6 +183,7 @@ fn apply_fixes(loaded: &config::Loaded, directories: &[PathBuf], mode: &FixMode)
         .iter()
         .flat_map(|directory| directory.adrs.iter())
         .filter(|file| discovery::is_numbered(&file.name))
+        .filter(|file| named.is_none_or(|named| fs::canonicalize(&file.path).is_ok_and(|path| named.contains(&path))))
         .collect::<Vec<_>>();
     // Every plan is computed before anything is written, so one file that cannot be fixed leaves the
     // whole tree untouched instead of half rewritten.
@@ -181,7 +208,6 @@ fn apply_fixes(loaded: &config::Loaded, directories: &[PathBuf], mode: &FixMode)
             }
             Planned::Write(fixed) => {
                 if !mode.check {
-                    reject_symlink(&file.path)?;
                     write_atomic(&file.path, fixed.as_bytes())
                         .with_context(|| format!("writing {}", file.path.display()))?;
                 }
@@ -193,6 +219,8 @@ fn apply_fixes(loaded: &config::Loaded, directories: &[PathBuf], mode: &FixMode)
 }
 
 fn plan_fix(loaded: &config::Loaded, manifest: &LockFile, mode: &FixMode, path: &Path) -> Result<Planned> {
+    // Checked while planning, so a symlinked ADR stops the run before any file is written.
+    reject_symlink(path)?;
     let source = match read_adr(path) {
         Ok(source) => source,
         Err(finding) => return Ok(Planned::Unreadable(*finding)),
@@ -320,6 +348,16 @@ fn check_file(loaded: &config::Loaded, path: &Path) -> Checked {
             finding.fixable = true;
         }
     }
+    // `--fix` and `format` rewrite numbered ADRs only, so a README or template finding is not fixable.
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if !discovery::is_numbered(&name) {
+        for finding in &mut findings {
+            finding.fixable = false;
+        }
+    }
     Checked {
         findings,
         document: Some((path.to_path_buf(), document)),
@@ -405,7 +443,8 @@ fn resolve_directories(paths: &[PathBuf], loaded: &config::Loaded, recursive: bo
     for root in &roots {
         directories.extend(descend(root));
     }
-    if directories.is_empty() && !paths.is_empty() {
+    // Paths a hook passed that all sit outside any log leave no root, which is not an error.
+    if directories.is_empty() && !paths.is_empty() && !roots.is_empty() {
         bail!(
             "no ADR log found under {} (no directory there holds a NNNN-*.md file)",
             roots
@@ -429,7 +468,8 @@ struct Source {
 
 impl Source {
     fn new(path: PathBuf, written: &Path) -> Self {
-        let pattern = is_glob(written);
+        // A path that exists is literal even if it contains `[`, as a staged `adrs/[draft]/0001-x.md` does.
+        let pattern = is_glob(written) && !path.exists();
         Self { path, pattern }
     }
 }
@@ -515,8 +555,12 @@ fn is_glob(path: &Path) -> bool {
 fn classify(path: &Path) -> Result<Option<PathBuf>> {
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
-        // A hook can pass a file the commit deletes: lint the log it left, if there still is one.
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+        // A hook can pass an ADR the commit deletes: lint the log it left, if there still is one. Any
+        // other missing path is an error, so a mistyped path cannot look like a clean run.
+        Err(error)
+            if error.kind() == std::io::ErrorKind::NotFound
+                && path.extension().is_some_and(|extension| extension == "md") =>
+        {
             let parent = path
                 .parent()
                 .filter(|parent| !parent.as_os_str().is_empty())

@@ -27,6 +27,9 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- `format` and `lint --fix` rewrite numbered ADRs only; a README or template inside an ADR directory
+  is still linted but never reformatted, and its findings are not marked fixable.
+
 - Directories are listed and ADRs checked in parallel, each file is read once and the Markdown rule
   set is built once per worker thread; output is sorted and exact duplicates are dropped, so it is
   byte-identical across runs.
@@ -42,6 +45,13 @@ All notable changes to this project are documented in this file.
   and it rewrites only numbered ADRs, never a README or template inside a log.
 - A file a hook passes that the commit deletes lints the log it leaves instead of aborting the run.
 - A recursive root with no ADR log under it is reported instead of passing with nothing checked.
+- `lint --fix` and `format` given only files (as a hook passes its staged files) rewrite only those
+  files, never a sibling ADR with unstaged edits, and a symlinked ADR stops the run before any write.
+- A mistyped path is an error again; only a missing `.md` file (one a commit deletes) is skipped.
+- A path that exists is read literally even if it holds `[`, and GitHub annotations escape `:` and `,`
+  in file names. Text and GitHub spans end at the end of the line's content.
+- `lint --fix` exits 1 when it refused to change a locked ADR.
+- Worker threads get a 16 MiB stack, so a deeply nested ADR cannot overflow one.
 
 - A date-prefixed document (`2026-07-01-design.md`) no longer makes its directory an ADR log, so
   `--recursive .` stops reporting plans and specs as ADRs.

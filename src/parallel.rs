@@ -7,6 +7,10 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
+/// Stack size of a worker thread: parsing a deeply nested document needs more than the 2 MiB default,
+/// and the main thread that runs a single-file job has 8 MiB.
+const WORKER_STACK_BYTES: usize = 16 << 20;
+
 /// Applies `function` to every item on up to one thread per core and returns the results in input
 /// order.
 pub fn map<T, R, F>(items: &[T], function: F) -> Vec<R>
@@ -28,17 +32,20 @@ where
     let mut indexed = thread::scope(|scope| {
         let workers = (0..threads)
             .map(|_| {
-                scope.spawn(move || {
-                    let mut local = Vec::new();
-                    loop {
-                        let index = next.fetch_add(1, Ordering::Relaxed);
-                        let Some(item) = items.get(index) else {
-                            break;
-                        };
-                        local.push((index, function(item)));
-                    }
-                    local
-                })
+                thread::Builder::new()
+                    .stack_size(WORKER_STACK_BYTES)
+                    .spawn_scoped(scope, move || {
+                        let mut local = Vec::new();
+                        loop {
+                            let index = next.fetch_add(1, Ordering::Relaxed);
+                            let Some(item) = items.get(index) else {
+                                break;
+                            };
+                            local.push((index, function(item)));
+                        }
+                        local
+                    })
+                    .expect("spawning a worker thread")
             })
             .collect::<Vec<_>>();
         workers

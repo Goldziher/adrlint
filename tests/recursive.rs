@@ -551,6 +551,12 @@ fn should_walk_a_nested_root_that_an_outer_root_ignores() {
     write_adr(directory.path(), "build/gen/adrs/0001-a.md");
     write_adr(directory.path(), "build/gen/adrs/0003-c.md");
 
+    let outer_only = lint_json(&directory, &["--recursive", "."]);
+    assert!(
+        !linted_paths(&outer_only).iter().any(|path| path.contains("build/")),
+        "the outer walk itself honours .gitignore: {}",
+        stdout(&outer_only)
+    );
     let output = lint_json(&directory, &["--recursive", ".", "build/gen/adrs"]);
     assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
     assert!(
@@ -566,12 +572,20 @@ fn should_walk_a_nested_root_that_an_outer_root_ignores() {
 fn should_honour_gitignore_but_not_other_ignore_files() {
     let directory = unconfigured_tree();
     fs::write(directory.path().join(".ignore"), "adrs/\n").expect("writing .ignore");
+    fs::write(directory.path().join(".gitignore"), "generated/\n").expect("writing .gitignore");
+    write_adr(directory.path(), "generated/adrs/0002-gap.md");
     fs::write(directory.path().join("adrs/team-a/0003-gap.md"), ADR).expect("writing an ADR after a gap");
 
     let output = lint_json(&directory, &[]);
     assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    let linted = linted_paths(&output);
     assert!(
-        linted_paths(&output).iter().any(|path| path.contains("adrs/team-a/")),
+        linted.iter().any(|path| path.contains("adrs/team-a/")),
+        "{}",
+        stdout(&output)
+    );
+    assert!(
+        !linted.iter().any(|path| path.contains("generated/")),
         "{}",
         stdout(&output)
     );
@@ -614,4 +628,32 @@ fn should_never_rewrite_a_non_adr_file_inside_a_log() {
         fs::read_to_string(&readme).expect("reading the README"),
         "- an index  \n-   with sloppy markdown\n"
     );
+}
+
+#[test]
+fn should_reject_a_mistyped_path() {
+    let directory = unconfigured_tree();
+
+    let output = run(&directory, &["lint", "adrz"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stdout(&output));
+    assert!(stderr(&output).contains("adrz"), "{}", stderr(&output));
+}
+
+#[test]
+fn should_pass_a_recursive_hook_run_that_touched_only_an_index() {
+    let directory = unconfigured_tree();
+    fs::write(directory.path().join("adrs/README.md"), "- an index\n").expect("writing the index");
+
+    let output = lint_json(&directory, &["--recursive", "adrs/README.md"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(diagnostics(&output).is_empty(), "{}", stdout(&output));
+}
+
+#[test]
+fn should_read_an_existing_path_with_brackets_literally() {
+    let directory = unconfigured_tree();
+    write_adr(directory.path(), "adrs/[draft]/0001-a.md");
+
+    let output = lint_json(&directory, &["adrs/[draft]/0001-a.md"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
 }
