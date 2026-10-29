@@ -52,7 +52,6 @@ All notable changes to this project are documented in this file.
   `MD033` are off; `MD004` is pinned to `*` so formatting cannot produce a MADR31 violation.
 - `[rules]` severity overrides for MADR and ADR codes, matched by longest prefix, so a set such as
   `MADR03` covers every variant and an explicit `MADR03b` still wins.
-
 - A pinned ADR corpus (madrlint, adr-manager, log4brains) and a generated MADR matrix, with
   corpus-wide tests for parsing, formatting idempotence, hash stability and truncated input.
 - `[rules]` and `[markdown.rules]` keys that match no implemented rule are reported once at startup.
