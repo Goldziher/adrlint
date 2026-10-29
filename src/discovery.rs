@@ -17,16 +17,28 @@ pub struct Directory {
     pub foreign: Vec<PathBuf>,
 }
 
+/// Lists one directory: its Markdown files as ADR candidates and everything else as foreign files.
+///
+/// Entry types come from the directory read itself, so only a symlink costs an extra `stat`.
 pub fn scan(dir: &Path) -> io::Result<Directory> {
     let mut entries = fs::read_dir(dir)?
-        .map(|entry| entry.map(|entry| entry.path()))
+        .map(|entry| {
+            entry.map(|entry| {
+                let path = entry.path();
+                let is_dir = match entry.file_type() {
+                    Ok(kind) if !kind.is_symlink() => kind.is_dir(),
+                    _ => path.is_dir(),
+                };
+                (path, is_dir)
+            })
+        })
         .collect::<io::Result<Vec<_>>>()?;
     entries.sort();
 
     let mut adrs = Vec::new();
     let mut foreign = Vec::new();
-    for path in entries {
-        if path.is_dir() {
+    for (path, is_dir) in entries {
+        if is_dir {
             continue;
         }
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
