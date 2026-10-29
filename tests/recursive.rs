@@ -370,3 +370,52 @@ fn should_keep_namespaces_behind_skipped_directories_out_of_a_recursive_run() {
         stdout(&output)
     );
 }
+
+#[test]
+fn should_not_treat_a_recursive_root_as_an_adr_directory() {
+    let directory = tree();
+    fs::write(directory.path().join("README.md"), "# Project\n").expect("writing a README");
+    fs::write(directory.path().join(".adrlint.toml"), "[adr]\ndir = \"docs/adr\"\n").expect("writing config");
+
+    let output = lint_json(&directory, &["--recursive", "."]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "the repository root is a search base, not an ADR log: {}",
+        stdout(&output)
+    );
+    assert!(
+        diagnostics(&output).is_empty(),
+        "a root README or config must not be reported as a foreign ADR file: {}",
+        stdout(&output)
+    );
+}
+
+#[test]
+fn should_ignore_a_markdown_only_directory_in_a_recursive_walk() {
+    let directory = tree();
+    write_adr(directory.path(), "docs/notes/README.md");
+
+    let output = lint_json(&directory, &["--recursive", "."]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(diagnostics(&output).is_empty(), "{}", stdout(&output));
+}
+
+#[test]
+fn should_report_a_foreign_file_in_a_discovered_adr_directory() {
+    let directory = tree();
+    fs::write(directory.path().join("adrs/team-a/README.md"), "# Team notes\n").expect("writing a README");
+
+    let output = lint_json(&directory, &["--recursive", "adrs"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert!(
+        diagnostics(&output).iter().any(|diagnostic| {
+            diagnostic["code"] == "MADR44"
+                && diagnostic["path"]
+                    .as_str()
+                    .is_some_and(|path| path.ends_with("adrs/team-a/README.md"))
+        }),
+        "a directory that holds ADRs still rejects a Markdown file that is not an ADR: {}",
+        stdout(&output)
+    );
+}

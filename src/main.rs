@@ -330,22 +330,24 @@ fn classify(path: &Path) -> Result<PathBuf> {
 /// Directories `--recursive` never descends into.
 const SKIPPED_DIRECTORIES: [&str; 3] = [".git", "target", "node_modules"];
 
-/// A root plus every descendant directory that directly contains at least one `.md` file.
+/// Every directory under `root`, including `root`, that directly contains a numbered ADR file.
 ///
-/// The root is always kept, even when it holds no ADR files: naming a directory explicitly means it
-/// is scanned, and an empty directory legitimately has no findings. Symlinks are not followed.
+/// A recursive root is a search base, not an ADR log: `adrlint lint --recursive .` must not treat the
+/// repository root's `README.md` and `.adrlint.toml` as foreign files in an ADR directory. Only a
+/// directory holding a `NNNN`-prefixed Markdown file is scanned, and a directory with no ADR at all
+/// contributes nothing. Symlinks are not followed.
 fn descend(root: &Path) -> Result<Vec<PathBuf>> {
-    let mut directories = vec![root.to_path_buf()];
+    let mut directories = Vec::new();
     for entry in WalkDir::new(root)
         .follow_links(false)
         .into_iter()
         .filter_entry(|entry| !is_skipped(entry))
     {
         let entry = entry.with_context(|| format!("walking {}", root.display()))?;
-        if entry.depth() == 0 || !entry.file_type().is_dir() {
+        if !entry.file_type().is_dir() {
             continue;
         }
-        if contains_markdown(entry.path())? {
+        if contains_numbered_adr(entry.path())? {
             directories.push(entry.path().to_path_buf());
         }
     }
@@ -360,11 +362,23 @@ fn is_skipped(entry: &DirEntry) -> bool {
     name.starts_with('.') || SKIPPED_DIRECTORIES.contains(&name.as_ref())
 }
 
-fn contains_markdown(directory: &Path) -> Result<bool> {
+/// Whether a directory directly holds a `NNNN-*.md`-shaped file.
+///
+/// The prefix is all that matters: a malformed name such as `0001_use_rust.md` still belongs to the
+/// log and must reach `MADR44`, while `README.md` does not make its parent an ADR directory.
+fn contains_numbered_adr(directory: &Path) -> Result<bool> {
     for entry in fs::read_dir(directory).with_context(|| format!("reading {}", directory.display()))? {
         let entry = entry.with_context(|| format!("reading {}", directory.display()))?;
-        let is_file = entry.file_type().is_ok_and(|file_type| !file_type.is_dir());
-        if is_file && entry.file_name().to_string_lossy().ends_with(".md") {
+        if entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.ends_with(".md")
+            && name
+                .as_bytes()
+                .get(..4)
+                .is_some_and(|prefix| prefix.iter().all(u8::is_ascii_digit))
+        {
             return Ok(true);
         }
     }
