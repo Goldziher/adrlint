@@ -123,3 +123,40 @@ fn should_honour_an_explicit_configuration() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn should_allow_an_image_an_adr_references_but_report_an_unreferenced_one() {
+    let directory = TempDir::new().expect("temporary directory");
+    let adr = include_str!("../fixtures/adr/valid/0001-record-architecture-decisions.md").replace(
+        "## Decision Drivers",
+        "![Context](./context.png)\n\nSee [the diagram](diagrams/../flow.svg).\n\n## Decision Drivers",
+    );
+    let log = directory.path().join("docs/adr");
+    std::fs::create_dir_all(&log).expect("creating the log");
+    std::fs::write(log.join("0001-record-architecture-decisions.md"), adr).expect("writing the ADR");
+    std::fs::create_dir_all(log.join("diagrams")).expect("creating a folder");
+    for image in ["context.png", "flow.svg", "unused.png", "notes.txt"] {
+        std::fs::write(log.join(image), b"asset").expect("writing an asset");
+    }
+
+    let output = run(adrlint().arg("lint").arg("--format").arg("json").arg(&log));
+    let diagnostics: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).expect("parsing JSON");
+    let mut foreign = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic["code"] == "MADR42")
+        .map(|diagnostic| {
+            Path::new(diagnostic["path"].as_str().expect("a path"))
+                .file_name()
+                .expect("a file name")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    foreign.sort();
+    assert_eq!(
+        foreign,
+        ["notes.txt", "unused.png"],
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}

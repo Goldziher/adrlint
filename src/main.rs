@@ -294,9 +294,10 @@ struct Collected {
     files: usize,
 }
 
-/// One file's findings and, when it could be read, its parsed document.
+/// One file's findings, the images it references and, when it could be read, its parsed document.
 struct Checked {
     findings: Vec<diagnostics::Diagnostic>,
+    images: Vec<PathBuf>,
     document: Option<(PathBuf, Document)>,
 }
 
@@ -318,18 +319,33 @@ fn scan_all(directories: &[PathBuf]) -> Result<Vec<discovery::Directory>> {
 fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -> Result<Collected> {
     let scanned = scan_all(directories)?;
     let mut findings = Vec::new();
-    for directory in &scanned {
-        findings.extend(rules::check_directory(directory, &loaded.config.adr));
-    }
-
     let files = scanned
         .iter()
         .flat_map(|directory| directory.adrs.iter())
         .collect::<Vec<_>>();
     let mut documents = Vec::with_capacity(files.len());
-    for checked in parallel::map(&files, |file| check_file(loaded, &file.path)).context("starting worker threads")? {
+    // The images each log's ADRs reference, keyed by the log: those are assets, not foreign files.
+    let mut images = std::collections::BTreeMap::<PathBuf, BTreeSet<PathBuf>>::new();
+    for (file, checked) in files
+        .iter()
+        .zip(parallel::map(&files, |file| check_file(loaded, &file.path)).context("starting worker threads")?)
+    {
         findings.extend(checked.findings);
         documents.extend(checked.document);
+        if let Some(parent) = file.path.parent()
+            && !checked.images.is_empty()
+        {
+            images.entry(parent.to_path_buf()).or_default().extend(checked.images);
+        }
+    }
+    let none = BTreeSet::new();
+    for directory in &scanned {
+        let referenced = images.get(&directory.path).unwrap_or(&none);
+        findings.extend(rules::check_directory_with_images(
+            directory,
+            &loaded.config.adr,
+            referenced,
+        ));
     }
     let mut stale = None;
 
@@ -368,6 +384,7 @@ fn check_file(loaded: &config::Loaded, path: &Path) -> Checked {
         Err(finding) => {
             return Checked {
                 findings: vec![*finding],
+                images: Vec::new(),
                 document: None,
             };
         }
@@ -396,6 +413,7 @@ fn check_file(loaded: &config::Loaded, path: &Path) -> Checked {
     }
     Checked {
         findings,
+        images: rules::referenced_images(&document, path, &loaded.root),
         document: Some((path.to_path_buf(), document)),
     }
 }

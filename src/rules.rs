@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 use crate::adr::Document;
 use crate::config::AdrConfig;
@@ -11,7 +11,7 @@ mod metadata;
 mod structure;
 mod style;
 
-pub use links::check_links;
+pub use links::{check_links, is_image, referenced_images};
 pub use metadata::check_metadata;
 pub use structure::check_structure;
 pub use style::check_style;
@@ -124,13 +124,26 @@ pub fn check_document(document: &Document, path: &Path, root: &Path) -> Vec<Diag
     diagnostics
 }
 
+/// Runs every directory-level rule, with no image known to be referenced: every non-ADR file is
+/// `MADR42`. [`check_directory_with_images`] exempts the images the log's ADRs reference.
 pub fn check_directory(directory: &Directory, config: &AdrConfig) -> Vec<Diagnostic> {
+    check_directory_with_images(directory, config, &BTreeSet::new())
+}
+
+/// Runs every directory-level rule. An image in `referenced` (canonical paths, as
+/// [`referenced_images`] returns them for the ADRs of this directory) is an allowed asset, not
+/// `MADR42`; an image no ADR references still is.
+pub fn check_directory_with_images(
+    directory: &Directory,
+    config: &AdrConfig,
+    referenced: &BTreeSet<PathBuf>,
+) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     check_start(directory, config.start, &mut diagnostics);
     if !config.allow_gaps {
         check_gaps(directory, &mut diagnostics);
     }
-    check_foreign(directory, &mut diagnostics);
+    check_foreign(directory, referenced, &mut diagnostics);
     check_duplicates(directory, &mut diagnostics);
     check_names(directory, &mut diagnostics);
     diagnostics
@@ -181,8 +194,11 @@ fn check_gaps(directory: &Directory, diagnostics: &mut Vec<Diagnostic>) {
     }
 }
 
-fn check_foreign(directory: &Directory, diagnostics: &mut Vec<Diagnostic>) {
+fn check_foreign(directory: &Directory, referenced: &BTreeSet<PathBuf>, diagnostics: &mut Vec<Diagnostic>) {
     for path in &directory.foreign {
+        if is_image(path) && std::fs::canonicalize(path).is_ok_and(|canonical| referenced.contains(&canonical)) {
+            continue;
+        }
         diagnostics.push(Diagnostic::error(
             "MADR42",
             path,

@@ -12,7 +12,7 @@
 //! - Only paths a renderer cannot follow (`C:\`, `\\server\share`, `file://`) are `MADR12d`.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::adr::{Document, Link};
 use crate::diagnostics::Diagnostic;
@@ -27,6 +27,39 @@ pub fn check_links(document: &Document, path: &Path, root: &Path) -> Vec<Diagnos
         check_link(link, directory, root, &slugs, path, &mut diagnostics);
     }
     diagnostics
+}
+
+/// File extensions of the images an ADR may keep beside it in its log.
+const IMAGE_EXTENSIONS: [&str; 6] = ["png", "jpg", "jpeg", "gif", "svg", "webp"];
+
+/// Whether `path` names an image an ADR may keep beside it, by extension and ignoring case.
+pub fn is_image(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            IMAGE_EXTENSIONS
+                .iter()
+                .any(|image| extension.eq_ignore_ascii_case(image))
+        })
+}
+
+/// The existing images `document` links to or embeds through a local destination, canonicalised.
+///
+/// Destinations are resolved as `MADR12` resolves them: relative to the ADR's directory, or to the
+/// project root for a root-relative one. A destination that does not exist is `MADR12`'s finding.
+pub fn referenced_images(document: &Document, path: &Path, root: &Path) -> Vec<PathBuf> {
+    let directory = path.parent().unwrap_or_else(|| Path::new(""));
+    document
+        .links
+        .iter()
+        .filter_map(|link| match classify(&link.url) {
+            Target::Relative => Some(directory.join(strip_target(&link.url))),
+            Target::RootRelative => root_relative_target(&link.url).map(|target| root.join(target)),
+            Target::External | Target::Anchor | Target::Absolute => None,
+        })
+        .filter(|target| is_image(target))
+        .filter_map(|target| std::fs::canonicalize(target).ok())
+        .collect()
 }
 
 /// Where a destination points, which decides the rule that judges it.

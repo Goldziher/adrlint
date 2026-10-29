@@ -55,6 +55,8 @@ All notable changes to this project are documented in this file.
 - A path that exists is read literally even if it holds `[`, and GitHub annotations escape `:` and `,`
   in file names. Text and GitHub spans end at the end of the line's content.
 - `lint --fix` exits 1 when it refused to change a locked ADR.
+- `MADR42` exempts an image (`png`, `jpg`, `jpeg`, `gif`, `svg`, `webp`) that an ADR in the same
+  log links to or embeds; an unreferenced image is still reported.
 - `lock` honours `--no-color` when it prints the errors that stop it.
 - A manifest from another canonical version no longer reports `ADR51` for missing files: a stale
   manifest verifies nothing until `adrlint lock --all` refreshes it.
