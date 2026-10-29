@@ -6,6 +6,14 @@
 
 use saphyr::{LoadableYamlNode, YamlOwned};
 
+/// The largest front matter block parsed, in bytes. A huge block is rejected before it reaches the
+/// YAML parser so a single ADR cannot exhaust memory.
+const MAX_BLOCK_BYTES: usize = 64 * 1024;
+
+/// The deepest YAML indentation accepted, in levels. Nested block mappings recurse in the parser,
+/// so a hostile document must be rejected before it overflows the stack.
+const MAX_INDENT_DEPTH: usize = 64;
+
 /// The front matter block and the result of parsing it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrontMatter {
@@ -30,14 +38,21 @@ pub struct FrontMatterError {
 
 /// Returns the front matter, if any, and the byte offset where the Markdown body starts.
 pub(crate) fn extract(source: &str) -> (Option<FrontMatter>, usize) {
-    let Some(first_end) = source.find('\n') else {
-        return (None, 0);
+    // A UTF-8 byte-order mark shifts every byte offset by three. Strip it once for detection and
+    // keep working in original coordinates, so returned offsets and line numbers stay valid.
+    let bom = source
+        .strip_prefix('\u{feff}')
+        .map_or(0, |rest| source.len() - rest.len());
+    let content = &source[bom..];
+
+    let Some(first_end) = content.find('\n') else {
+        return (None, bom);
     };
-    if source[..first_end].trim_end() != "---" {
-        return (None, 0);
+    if content[..first_end].trim_end() != "---" {
+        return (None, bom);
     }
 
-    let raw_start = first_end + 1;
+    let raw_start = bom + first_end + 1;
     let mut line = 1;
     let mut cursor = raw_start;
     while cursor <= source.len() {
@@ -69,13 +84,41 @@ pub(crate) fn extract(source: &str) -> (Option<FrontMatter>, usize) {
         cursor = line_end + 1;
     }
 
-    (None, 0)
+    (None, bom)
 }
 
-/// The opening fence is always the first line, so the block's YAML starts on line 2.
+/// Parses the block, rejecting input that would exhaust the parser: an oversized block or one
+/// nested deeper than [`MAX_INDENT_DEPTH`].
+///
+/// The opening fence is always the first line, so the block's YAML starts on line 2. Both limits
+/// are reported as ordinary [`FrontMatterError`]s so `MADR21` reports them instead of the process
+/// aborting.
 fn parse_yaml(raw: &str) -> (Option<YamlOwned>, Option<FrontMatterError>) {
     if raw.trim().is_empty() {
         return (None, None);
+    }
+    if raw.len() > MAX_BLOCK_BYTES {
+        return (
+            None,
+            Some(FrontMatterError {
+                message: format!(
+                    "front matter is {} bytes; the limit is {MAX_BLOCK_BYTES} bytes",
+                    raw.len()
+                ),
+                line: 2,
+            }),
+        );
+    }
+    if let Some((depth, line)) = excessive_indentation(raw) {
+        return (
+            None,
+            Some(FrontMatterError {
+                message: format!(
+                    "front matter nests {depth} levels deep on line {line}; the limit is {MAX_INDENT_DEPTH} levels"
+                ),
+                line: 1 + line,
+            }),
+        );
     }
 
     match YamlOwned::load_from_str(raw) {
@@ -88,6 +131,29 @@ fn parse_yaml(raw: &str) -> (Option<YamlOwned>, Option<FrontMatterError>) {
             }),
         ),
     }
+}
+
+/// The first line whose indentation introduces more than [`MAX_INDENT_DEPTH`] nesting levels, and
+/// that depth. Indentation is tracked as a stack of distinct widths, so sibling keys at the same
+/// depth do not accumulate.
+fn excessive_indentation(raw: &str) -> Option<(usize, usize)> {
+    let mut levels: Vec<usize> = Vec::new();
+    for (index, line) in raw.lines().enumerate() {
+        let trimmed = line.trim_start_matches(' ');
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = line.len() - trimmed.len();
+        while levels.last().is_some_and(|level| *level >= indent) {
+            levels.pop();
+        }
+        levels.push(indent);
+        let depth = levels.len() - 1;
+        if depth > MAX_INDENT_DEPTH {
+            return Some((depth, index + 1));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -168,5 +234,57 @@ mod tests {
 
         assert_eq!(front_matter.end_line, 3);
         assert_eq!(&source[body_start..], "# Title\r\n");
+    }
+
+    #[test]
+    fn should_strip_a_leading_byte_order_mark() {
+        let source = "\u{feff}---\nstatus: accepted\n---\n# Title\n";
+        let (extracted, body_start) = extract(source);
+        let front_matter = extracted.expect("expected front matter");
+
+        assert_eq!(front_matter.line, 1);
+        assert_eq!(front_matter.end_line, 3);
+        assert!(front_matter.error.is_none());
+        assert_eq!(body_start, source.find("# Title").unwrap());
+        assert_eq!(&source[body_start..], "# Title\n");
+    }
+
+    #[test]
+    fn should_return_the_body_after_a_bom_without_front_matter() {
+        let source = "\u{feff}# Title\n";
+        let (extracted, body_start) = extract(source);
+        assert!(extracted.is_none());
+        assert_eq!(body_start, source.find('#').unwrap());
+    }
+
+    #[test]
+    fn should_reject_an_oversized_front_matter_block() {
+        let block = "key: value\n".repeat(7000);
+        let source = format!("---\n{block}---\n# Title\n");
+        let (extracted, body_start) = extract(&source);
+        let front_matter = extracted.expect("expected front matter");
+
+        assert!(front_matter.value.is_none());
+        let error = front_matter.error.expect("expected a parse error");
+        assert_eq!(error.line, 2);
+        assert!(error.message.contains("limit"), "{}", error.message);
+        assert_eq!(&source[body_start..], "# Title\n");
+    }
+
+    #[test]
+    fn should_reject_deeply_nested_front_matter_without_aborting() {
+        let mut block = String::new();
+        for level in 0..200 {
+            block.push_str(&"  ".repeat(level));
+            block.push_str(&format!("key{level}:\n"));
+        }
+        let source = format!("---\n{block}---\n# Title\n");
+        let (extracted, _) = extract(&source);
+        let front_matter = extracted.expect("expected front matter");
+
+        assert!(front_matter.value.is_none());
+        let error = front_matter.error.expect("expected a parse error");
+        assert!(error.message.contains("levels"), "{}", error.message);
+        assert!(error.line > 1, "expected a line inside the block");
     }
 }

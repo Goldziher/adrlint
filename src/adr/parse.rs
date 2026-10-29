@@ -859,6 +859,32 @@ mod tests {
     }
 
     #[test]
+    fn should_keep_offsets_pointing_into_a_bom_prefixed_source() {
+        let source = "\u{feff}---\nstatus: accepted\n---\n# Title\n\nBody\n";
+        let document = parse(source);
+        let heading = &document.headings[0];
+
+        assert!(document.front_matter.is_some());
+        assert_eq!(heading.line, 4);
+        assert_eq!(heading.start, source.find("# Title").unwrap());
+        assert_eq!(&source[heading.start..heading.end], "# Title");
+        assert_eq!(&source[heading.body_start..heading.body_end], "\nBody\n");
+    }
+
+    #[test]
+    fn should_parse_a_body_that_starts_with_a_bom_and_no_front_matter() {
+        let source = "\u{feff}# Title\n\nBody\n";
+        let document = parse(source);
+        let heading = &document.headings[0];
+
+        assert!(document.front_matter.is_none());
+        assert_eq!(document.body_start, 3);
+        assert_eq!(heading.line, 1);
+        assert_eq!(heading.start, source.find('#').unwrap());
+        assert_eq!(&source[heading.start..heading.end], "# Title");
+    }
+
+    #[test]
     fn should_report_byte_offsets_after_multibyte_text() {
         let source = "émoji 🚀\n\n# Heading\n\n- ünïcode\n";
         let document = parse(source);
