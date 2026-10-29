@@ -160,6 +160,12 @@ fn should_refuse_to_change_locked_content_without_force() {
         stderr(&output)
     );
     assert_eq!(fs::read(&path).unwrap(), locked, "a refused fix must not write");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "a refused fix fails the run: {}",
+        stderr(&output)
+    );
 
     let output = run(&directory, &["lint", "--fix", "--force"]);
     assert!(stderr(&output).contains("fixed "), "{}", stderr(&output));
@@ -171,4 +177,56 @@ fn should_require_fix_for_force() {
     let (directory, _) = project(ADR);
     let output = run(&directory, &["lint", "--force"]);
     assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+}
+
+#[test]
+fn should_fix_only_the_files_a_hook_names() {
+    let (directory, first) = project(&misplaced());
+    let second = directory.path().join("docs/adr/0002-y.md");
+    fs::write(&second, misplaced()).expect("writing the second ADR");
+
+    let output = run(&directory, &["lint", "--fix", "docs/adr/0002-y.md"]);
+    assert_ne!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert!(
+        read(&second).contains("\n### Consequences\n"),
+        "the named file is fixed"
+    );
+    assert_eq!(
+        read(&first),
+        misplaced(),
+        "a sibling the hook did not name keeps its unstaged edits"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn should_write_nothing_when_a_planned_file_is_a_symlink() {
+    let (directory, first) = project(&misplaced());
+    let target = directory.path().join("outside.md");
+    fs::write(&target, misplaced()).expect("writing the symlink target");
+    std::os::unix::fs::symlink(&target, directory.path().join("docs/adr/0002-y.md")).expect("creating a symlink");
+
+    let output = run(&directory, &["lint", "--fix"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert_eq!(read(&first), misplaced(), "no file is written when any plan fails");
+    assert_eq!(read(&target), misplaced());
+}
+
+#[test]
+fn should_not_mark_a_readme_finding_fixable() {
+    let (directory, _) = project(ADR);
+    fs::write(directory.path().join("docs/adr/README.md"), "# Index\n\n- one\n").expect("writing a README");
+
+    let output = run(&directory, &["lint", "--format", "json"]);
+    let findings: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).expect("JSON findings");
+    let readme = findings
+        .iter()
+        .filter(|finding| finding["path"].as_str().is_some_and(|path| path.ends_with("README.md")))
+        .collect::<Vec<_>>();
+    assert!(!readme.is_empty(), "{}", stdout(&output));
+    assert!(
+        readme.iter().all(|finding| finding["fixable"] == false),
+        "{}",
+        stdout(&output)
+    );
 }

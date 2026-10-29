@@ -118,12 +118,18 @@ pub fn locate(diagnostics: &mut [Diagnostic], source: &str) {
         if width == 0 {
             continue;
         }
-        let width = if diagnostic.code == "MADR31" { 1 } else { width };
         if diagnostic.column == 1 {
             diagnostic.column = leading + 1;
         }
+        // The span ends with the line's content (or after one character for a list marker), and never
+        // before the column it starts at.
+        let end = if diagnostic.code == "MADR31" {
+            diagnostic.column + 1
+        } else {
+            (leading + width + 1).max(diagnostic.column + 1)
+        };
         diagnostic.end_line = Some(diagnostic.line);
-        diagnostic.end_column = Some(diagnostic.column + width);
+        diagnostic.end_column = Some(end);
     }
 }
 
@@ -161,6 +167,16 @@ pub fn add_default_help(diagnostics: &mut [Diagnostic]) {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn should_end_a_span_at_the_end_of_the_line_content() {
+        let mut findings = vec![Diagnostic::error("MD009", "0001-x.md", 1, "trailing").with_span(5, 1, 5)];
+        findings[0].end_line = None;
+        findings[0].end_column = None;
+        locate(&mut findings, "  abc defg  \n");
+        assert_eq!((findings[0].column, findings[0].end_column), (5, Some(11)));
+    }
+
     use super::*;
 
     fn at(code: &'static str, line: usize) -> Diagnostic {

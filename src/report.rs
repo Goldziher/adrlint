@@ -201,7 +201,7 @@ fn print_github(writer: &mut impl Write, diagnostics: &[Diagnostic]) -> io::Resu
         };
         let mut location = format!(
             "file={},line={},col={}",
-            escape(&diagnostic.path.display().to_string()),
+            escape_property(&diagnostic.path.display().to_string()),
             diagnostic.line,
             diagnostic.column
         );
@@ -222,6 +222,11 @@ fn print_github(writer: &mut impl Write, diagnostics: &[Diagnostic]) -> io::Resu
 
 fn escape(value: &str) -> String {
     value.replace('%', "%25").replace('\r', "%0D").replace('\n', "%0A")
+}
+
+/// Escapes a workflow-command property value, which also may not hold a raw `:` or `,`.
+fn escape_property(value: &str) -> String {
+    escape(value).replace(':', "%3A").replace(',', "%2C")
 }
 
 #[cfg(test)]
@@ -261,6 +266,19 @@ mod tests {
         assert_eq!(
             String::from_utf8(output).unwrap(),
             "::error file=docs/adr/notes.txt,line=1,col=1::[MADR42] non-ADR file\n"
+        );
+    }
+
+    #[test]
+    fn should_escape_a_github_property_value() {
+        let mut diagnostic = diagnostic();
+        diagnostic.path = "docs/adr/a,b:c.md".into();
+        let mut output = Vec::new();
+        print_github(&mut output, &[diagnostic]).unwrap();
+        assert!(
+            String::from_utf8(output)
+                .unwrap()
+                .contains("file=docs/adr/a%2Cb%3Ac.md,")
         );
     }
 
