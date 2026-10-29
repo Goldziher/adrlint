@@ -1,8 +1,24 @@
+"""Locate the adrlint executable, downloading and verifying a release asset when needed.
+
+Environment
+-----------
+``ADRLINT_BINARY``
+    Absolute path to an already-installed adrlint executable. When set it is used as-is: nothing is
+    downloaded and no checksum is checked, so the caller owns the integrity of that file.
+
+The downloaded binary is cached under ``~/.cache/adrlint/<version>/``. The directory is private
+(mode 0o700) and sits next to ``<binary>.sha256``, which records the digest of the extracted binary
+and of the archive it came from. A cache hit is only served after both digests are re-checked
+against the file on disk and against the release checksum manifest; otherwise the binary is
+discarded and downloaded again. Archive checksums are always verified before extraction.
+"""
+
 from __future__ import annotations
 
 import hashlib
 import os
 import platform
+import shutil
 import ssl
 import subprocess
 import sys
@@ -16,6 +32,10 @@ from urllib.request import Request, urlopen
 import certifi
 
 BASE_URL = "https://github.com/Goldziher/adrlint/releases/download"
+
+# A release archive is a few megabytes. Refusing anything larger keeps a hostile or broken
+# response from being buffered into memory.
+MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
 
 def _platform_triple() -> str:
@@ -63,32 +83,46 @@ def _get(url: str) -> bytes:
         with urlopen(request, timeout=30, context=context) as response:
             if response.status != 200:
                 raise RuntimeError(f"HTTP {response.status}: {response.reason}")
-            return response.read()
+            declared = response.headers.get("Content-Length")
+            if declared is not None and int(declared) > MAX_DOWNLOAD_BYTES:
+                raise RuntimeError(f"Refusing to download {url}: {declared} bytes is too large")
+
+            # Read in bounded chunks so a chunked response cannot buffer past the cap either.
+            body = bytearray()
+            while chunk := response.read(1024 * 1024):
+                body.extend(chunk)
+                if len(body) > MAX_DOWNLOAD_BYTES:
+                    raise RuntimeError(f"Refusing to download {url}: response exceeds {MAX_DOWNLOAD_BYTES} bytes")
+            return bytes(body)
     except URLError as exc:
         raise RuntimeError(f"Failed to download {url}: {exc}") from exc
+
+
+def _digest_for(manifest: str, name: str) -> str | None:
+    for line in manifest.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].lstrip("*") == name:
+            return parts[0]
+    return None
 
 
 def _expected_digest(version: str, asset_name: str) -> str:
     tag = _python_version_to_tag(version)
     manifest_url = f"{BASE_URL}/v{tag}/adrlint_{tag}_checksums.txt"
-    manifest = _get(manifest_url).decode("utf-8")
-    for line in manifest.splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[1].lstrip("*") == asset_name:
-            return parts[0]
-    raise RuntimeError(f"No checksum published for {asset_name}")
+    digest = _digest_for(_get(manifest_url).decode("utf-8"), asset_name)
+    if digest is None:
+        raise RuntimeError(f"No checksum published for {asset_name}")
+    return digest
 
 
-def _download(version: str) -> tuple[bytes, str, str]:
+def _download(version: str) -> tuple[bytes, str, str, str]:
     url, asset_name, ext = _asset(version)
     archive = _get(url)
     expected = _expected_digest(version, asset_name)
     actual = hashlib.sha256(archive).hexdigest()
     if actual != expected:
-        raise RuntimeError(
-            f"Checksum mismatch for {asset_name}: expected {expected}, got {actual}"
-        )
-    return archive, asset_name, ext
+        raise RuntimeError(f"Checksum mismatch for {asset_name}: expected {expected}, got {actual}")
+    return archive, asset_name, ext, expected
 
 
 def _extract(archive: Path, ext: str, destination: Path) -> None:
@@ -109,11 +143,59 @@ def _extract(archive: Path, ext: str, destination: Path) -> None:
     raise RuntimeError("Binary not found in downloaded archive")
 
 
-def _cache_path(version: str) -> Path:
+def _cache_dir(version: str) -> Path:
     cache_dir = Path.home() / ".cache" / "adrlint" / version
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    suffix = ".exe" if platform.system().lower() == "windows" else ""
-    return cache_dir / f"adrlint{suffix}"
+    cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # mkdir's mode is filtered by the umask and is ignored when the directory already exists.
+    try:
+        os.chmod(cache_dir, 0o700)
+    except OSError:
+        pass
+    return cache_dir
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_cache_file(destination: Path, source: Path, mode: int) -> None:
+    """Copy ``source`` into ``destination`` without ever writing through an existing path.
+
+    The content is written to a fresh ``O_EXCL`` file in the destination directory and then
+    renamed into place, so a symlink left at ``destination`` is replaced rather than followed.
+    """
+    fd, staging = tempfile.mkstemp(dir=str(destination.parent), prefix=f".{destination.name}.")
+    try:
+        with os.fdopen(fd, "wb") as target, source.open("rb") as origin:
+            shutil.copyfileobj(origin, target)
+            target.flush()
+            os.fsync(target.fileno())
+        os.chmod(staging, mode)
+        os.replace(staging, destination)
+    except BaseException:
+        Path(staging).unlink(missing_ok=True)
+        raise
+
+
+def _cache_is_valid(binary_path: Path, record_path: Path, version: str, asset_name: str) -> bool:
+    """Check a cached binary against the record written at install time and the live manifest."""
+    if not binary_path.is_file() or not record_path.is_file():
+        return False
+
+    published_archive = _expected_digest(version, asset_name)
+    record = record_path.read_text(encoding="utf-8")
+    if _digest_for(record, asset_name) != published_archive:
+        return False
+
+    recorded_binary = _digest_for(record, binary_path.name)
+    if recorded_binary is None:
+        return False
+
+    return _sha256_file(binary_path) == recorded_binary
 
 
 def ensure_binary() -> str:
@@ -124,20 +206,34 @@ def ensure_binary() -> str:
     if override:
         return override
 
-    binary_path = _cache_path(__version__)
-    if binary_path.exists() and os.access(binary_path, os.X_OK):
-        return str(binary_path)
+    suffix = ".exe" if platform.system().lower() == "windows" else ""
+    cache_dir = _cache_dir(__version__)
+    binary_path = cache_dir / f"adrlint{suffix}"
+    record_path = cache_dir / f"adrlint{suffix}.sha256"
+    _, asset_name, _ = _asset(__version__)
+
+    if binary_path.is_file() and os.access(binary_path, os.X_OK):
+        if _cache_is_valid(binary_path, record_path, __version__, asset_name):
+            return str(binary_path)
+        print("Cached adrlint binary failed verification; reinstalling.", file=sys.stderr)
+
+    binary_path.unlink(missing_ok=True)
+    record_path.unlink(missing_ok=True)
 
     print(f"Downloading adrlint binary v{__version__}...", file=sys.stderr)
-    archive, asset_name, ext = _download(__version__)
+    archive, asset_name, ext, archive_digest = _download(__version__)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         archive_path = Path(tmpdir) / asset_name
         archive_path.write_bytes(archive)
-        _extract(archive_path, ext, binary_path)
+        extracted = Path(tmpdir) / binary_path.name
+        _extract(archive_path, ext, extracted)
 
-    if platform.system().lower() != "windows":
-        binary_path.chmod(0o755)
+        _write_cache_file(binary_path, extracted, 0o755)
+        record = f"{_sha256_file(binary_path)}  {binary_path.name}\n{archive_digest}  {asset_name}\n"
+        record_file = Path(tmpdir) / record_path.name
+        record_file.write_text(record, encoding="utf-8")
+        _write_cache_file(record_path, record_file, 0o600)
 
     print("Binary downloaded successfully!", file=sys.stderr)
     return str(binary_path)

@@ -40,15 +40,37 @@ if [ "${CACHE_HIT:-}" != "true" ]; then
     fi
     echo "Checksum OK (sha256): ${actual}"
 
+    # Unpack into a private directory and publish only the expected member. Extracting the whole
+    # archive into BIN_DIR would let a malicious or malformed archive drop arbitrary paths into a
+    # directory that is then appended to PATH.
+    extract_dir="$work/extract"
+    mkdir -p "$extract_dir"
+
     case "$EXT" in
     tar.gz)
-      tar -xzf "$ASSET" -C "$BIN_DIR"
+      tar -xzf "$ASSET" -C "$extract_dir" "$bin_name"
       ;;
     zip)
       if command -v unzip >/dev/null 2>&1; then
-        unzip -q -o "$ASSET" -d "$BIN_DIR"
+        unzip -q -o "$ASSET" "$bin_name" -d "$extract_dir"
       else
-        python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$ASSET" "$BIN_DIR"
+        python3 - "$ASSET" "$extract_dir" "$bin_name" <<'PY'
+import os
+import shutil
+import sys
+import zipfile
+
+archive, destination, member = sys.argv[1:4]
+with zipfile.ZipFile(archive) as handle:
+    for name in handle.namelist():
+        if os.path.basename(name) != member:
+            continue
+        with handle.open(name) as source, open(os.path.join(destination, member), "wb") as target:
+            shutil.copyfileobj(source, target)
+        break
+    else:
+        sys.exit(f"{member} not found in {archive}")
+PY
       fi
       ;;
     *)
@@ -56,6 +78,13 @@ if [ "${CACHE_HIT:-}" != "true" ]; then
       exit 1
       ;;
     esac
+
+    extracted="$(find "$extract_dir" -type f -name "$bin_name" | head -n 1)"
+    if [ -z "$extracted" ]; then
+      echo "::error::${ASSET} does not contain ${bin_name}"
+      exit 1
+    fi
+    mv -f "$extracted" "${BIN_DIR}/${bin_name}"
   )
 
   if [ "$RUNNER_OS" != "Windows" ]; then
