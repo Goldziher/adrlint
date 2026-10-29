@@ -64,12 +64,13 @@ README is a placeholder name.
 
 ## Installation
 
-| Channel                | Command                                          |
-| ---------------------- | ------------------------------------------------ |
-| Homebrew (macOS/Linux) | `brew tap goldziher/tap && brew install adrlint` |
-| Cargo (Rust)           | `cargo install adrlint`                          |
-| npm (Node.js)          | `pnpm add -g adrlint`                            |
-| pip (Python)           | `pip install adrlint`                            |
+| Channel                | Command                                                                                         |
+| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| Homebrew (macOS/Linux) | `brew tap goldziher/tap && brew install adrlint`                                                |
+| Scoop (Windows)        | `scoop bucket add goldziher https://github.com/Goldziher/scoop-bucket && scoop install adrlint` |
+| Cargo (Rust)           | `cargo install adrlint`                                                                         |
+| npm (Node.js)          | `pnpm add -g adrlint`                                                                           |
+| pip (Python)           | `pip install adrlint`                                                                           |
 
 Prefer prebuilt binaries? [`cargo binstall adrlint`](https://github.com/cargo-bins/cargo-binstall)
 downloads a release archive instead of compiling.
@@ -102,6 +103,9 @@ adrlint init
 
 # Lint the configured ADR directory
 adrlint lint
+
+# Lint every ADR under namespaced folders
+adrlint lint --recursive adrs product/adrs
 
 # Create the next ADR
 adrlint new "Use PostgreSQL for event storage"
@@ -138,17 +142,28 @@ Options:
 ### `adrlint lint`
 
 ```text
-adrlint lint [PATH]... [--format text|json|github]
+adrlint lint [PATH]... [--recursive] [--format text|json|github]
 ```
 
-With no paths, `lint` uses `adr.dir` from the configuration. With paths, each directory is linted in
-full and each file is resolved to its parent directory — so a pre-commit hook that passes only the
-changed files still sees the whole directory.
+Every command accepts files, directories and glob patterns. A file is checked together with its
+parent directory, so a pre-commit hook that passes only the changed files still sees the numbering
+next to them; a directory is one ADR log; a glob (`adrs/*`, `product/adrs/*`) expands to whatever it
+matches. With no paths, the configured `adr.paths` are used, falling back to `adr.dir`.
+
+`--recursive` adds every descendant directory that directly contains Markdown, skipping `.git`,
+`target`, `node_modules` and hidden directories. Numbering is still checked per ADR directory, so
+`adrs/team-a/0001.md` and `adrs/team-b/0001.md` are independent logs.
+
+```bash
+adrlint lint adrs/team-a/0002-use-postgresql.md   # that file, with its directory
+adrlint lint 'adrs/*'                             # both namespaces
+adrlint lint --recursive adrs product/adrs        # every nested namespace
+```
 
 ### `adrlint format`
 
 ```text
-adrlint format [PATH]... [--check] [--force]
+adrlint format [PATH]... [--recursive] [--check] [--force]
 ```
 
 Resolves paths exactly like `lint`, then applies rumdl's fixes to each `.md` file. Only files that
@@ -182,7 +197,7 @@ new ADR starts as `proposed` and is not locked.
 ### `adrlint lock`
 
 ```text
-adrlint lock [PATH]... [--check] [--all]
+adrlint lock [PATH]... [--recursive] [--check] [--all]
 ```
 
 Lints first and refuses to lock a directory with errors. By default it locks `accepted` and
@@ -284,6 +299,8 @@ rest.
 ```toml
 [adr]
 dir = "docs/adr"
+# Extra ADR logs used when no paths are passed. Directories or globs, relative to the project root.
+paths = ["adrs/*", "product/adrs/*"]
 start = 1 # 0 or 1; used by init and new
 allow_gaps = false # only for imported histories
 
@@ -303,6 +320,9 @@ MD033 = "off"
 MADR03 = "warn"
 MADR12c = "error"
 ```
+
+`[adr].paths` is the default input set when no CLI paths are given; `dir` remains the single ADR
+directory used by `init` and `new`. Each layer replaces the path list as a whole.
 
 `[markdown].enabled = false` removes every rumdl finding and every rumdl fix. `[markdown.rules]` takes
 `off`, `warn` or `error`, keyed by rumdl's own code: `off` removes both the finding and the fix, while
@@ -419,6 +439,22 @@ registers a problem matcher so findings appear inline on the diff.
 - [ ] External link checking (`MADR11`, opt-in)
 - [ ] `[lint]` external-link configuration
 - [ ] 1.0 release
+
+## Library
+
+The crate is also a library: `Document` and `parse` give you the single Markdown parse,
+`rules::check_document` runs the MADR rules, `markdown::check` and `markdown::format` wrap rumdl,
+`lock::canonical_hash` produces the immutability hash, and `config::load` resolves the layered
+configuration.
+
+```rust
+use adrlint::{adr, rules};
+
+let document = adr::parse(source);
+let findings = rules::check_document(&document, path, root);
+```
+
+The CLI is a thin layer over those modules; nothing in the library shells out or reads the network.
 
 ## Contributing
 

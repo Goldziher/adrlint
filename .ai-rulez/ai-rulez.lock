@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.9.2'
 scope = 'all'
-tree = 'sha256:e252f343aa7a01c8646beae4f5238224c46ad66e7559cc005c62887060d5d73c'
+tree = 'sha256:22b6c7ea6e6dea9590815326e928d2733079bf32c86aac8b02e95f396dab2e06'
 
 [[served]]
 name = 'build'
@@ -172,7 +172,7 @@ digest = 'sha256:c78115a5173a18ebceae477cb22e7f0b05e90298c29932a85a6c4c215ddb71e
 kind = 'rule'
 id = 'configuration-system'
 path = 'rules/configuration-system.md'
-digest = 'sha256:0777557c93990ac27c94d7d27ef6cdde0b025d1ea767d550b680a145dc3d125c'
+digest = 'sha256:da3c321b7278fb3e70e49881728146de6ecd2d12504b66dbaeae71208534be29'
 
 [[item]]
 kind = 'rule'
@@ -196,7 +196,7 @@ digest = 'sha256:9e1efa67bbc447b718ae0b7eabca69867ec19fc31ad99d7131cc946799d54b8
 kind = 'rule'
 id = 'sequentiality-numbering'
 path = 'rules/sequentiality-numbering.md'
-digest = 'sha256:87adb45bb10db20e1799f09d67e5e1bba95a686e82aa0cf96e190e921e709736'
+digest = 'sha256:6e9594695153e1bc564cb75b4088260c29986db6efde1fbf0066d83df7c5b44a'
 
 [[item]]
 kind = 'rule'

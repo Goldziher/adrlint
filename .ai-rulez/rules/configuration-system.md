@@ -32,6 +32,8 @@ unknown-key error until external link checking lands, rather than a silent no-op
 ```toml
 [adr]
 dir = "docs/adr"
+# Extra logs used when no CLI paths are given; directories or globs, replaced as a whole per layer.
+paths = ["adrs/*", "product/adrs/*"]
 start = 1 # 0 or 1, fixed for the life of the directory
 allow_gaps = false
 
@@ -67,6 +69,8 @@ statuses = ["accepted", "rejected"]
   (including a Windows drive or UNC prefix).
 - `[rules]` keys are matched longest-prefix: setting `MADR03` configures `MADR03a` and `MADR03b`,
   while an explicit `MADR03b` wins. `off` removes the finding entirely.
+- Inputs resolve in this order: CLI paths, `adr.paths`, `adr.dir`. A file is always checked with its
+  parent directory; globs expand; `--recursive` adds descendant directories that contain Markdown.
 - `adrlint init` writes the full template with comments, including every key. A key missing from the
   template does not exist as far as users are concerned.
 - `adrlint lint` reports unknown or misspelled rule IDs in config once, at startup, rather than

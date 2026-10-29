@@ -51,6 +51,8 @@ A rule that needs a network call is `#[ignore]`d by default and gated behind con
 - `fixtures/adr/invalid/<rule-id>/` holds the smallest document that violates that rule.
 - The [`adr/madrlint`](https://github.com/adr/madrlint) `madr-samples/` corpus is the conformance
   baseline for ported structural rules.
+- Namespaced ADR logs (`adrs/<namespace>/`, `product/adrs/<namespace>/`) are covered by
+  `tests/recursive.rs`; directory rules are per log, so the same number may appear in two namespaces.
 - `fixtures/corpus/` vendors real ADRs from madrlint, adr-manager and log4brains at pinned commits,
   plus a generated matrix of MADR shapes. Do not edit the vendored files; refresh them with
   `scripts/fetch-corpus.sh` and regenerate the synthetic tree with `scripts/generate-corpus.py`.

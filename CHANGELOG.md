@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+
+- `--recursive` for `lint`, `format` and `lock`, so ADR logs nested under namespaces
+  (`adrs/team-a/`, `product/adrs/api/`) are found without listing every directory.
+- Files, directories and glob patterns are accepted as paths by every command. A file is checked
+  with its parent directory so numbering stays intact.
+- `[adr].paths` configures the default input set as directories or globs, falling back to `adr.dir`.
+- A documented library surface and root re-exports (`parse_adr`, `check_document`,
+  `check_markdown`, `format_markdown`, `canonical_hash`, `load`) for consumers such as poly.
+- A Scoop manifest, published by the release workflow to `Goldziher/scoop-bucket`.
+
+### Changed
+
+- Windows releases are built natively as `x86_64-pc-windows-msvc`; the GNU cross-build could not
+  link because rumdl depends on `tikv-jemallocator` on every non-msvc target.
+
 ## 0.1.0 - 2026-10-29
 
 ### Added

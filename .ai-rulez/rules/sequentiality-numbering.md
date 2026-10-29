@@ -34,6 +34,12 @@ edited, and the fix is to restore the record, not to close the gap.
 `[adr].allow_gaps` exists only for imported histories that legitimately start with holes. It is off
 by default and turning it on should be a documented, one-time migration.
 
+### Namespaces
+
+A repository may hold several independent logs, for example `adrs/team-a/`, `adrs/team-b/` and
+`product/adrs/api/`. Numbering is checked per ADR directory, never across them: two namespaces may
+both start at `0001`. Globs and `--recursive` select the logs; the rules never merge them.
+
 ### Creating the next ADR
 
 `adrlint new "<title>"` computes the next free number, then creates the file with `O_EXCL` so two
