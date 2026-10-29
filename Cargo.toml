@@ -47,4 +47,6 @@ toml = "1.1.8"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
+# Applies the GitHub problem matcher's pattern to real `lint` output.
+regex = "1.13.1"
 tempfile = "3.27.0"

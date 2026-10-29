@@ -16,6 +16,7 @@ dependencies = [
  "owo-colors",
  "pretty_assertions",
  "pulldown-cmark",
+ "regex",
  "rumdl",
  "saphyr",
  "serde",

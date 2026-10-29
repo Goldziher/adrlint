@@ -140,3 +140,28 @@ fn should_put_the_end_position_in_github_annotations() {
     assert!(text.contains(",endColumn="), "{text}");
     assert!(text.contains("::[MADR06] "), "{text}");
 }
+
+#[test]
+fn should_match_text_output_with_the_actions_problem_matcher() {
+    let matcher: serde_json::Value =
+        serde_json::from_str(include_str!("../problem-matcher.json")).expect("parsing problem-matcher.json");
+    let pattern = &matcher["problemMatcher"][0]["pattern"][0];
+    let regexp = regex::Regex::new(pattern["regexp"].as_str().expect("a regexp")).expect("compiling the regexp");
+
+    let directory = project(&[("0001-x.md", misplaced())]);
+    let output = run(&directory, &["lint", "--no-color"]);
+    let text = stdout(&output);
+    let captures = text
+        .lines()
+        .find_map(|line| regexp.captures(line))
+        .unwrap_or_else(|| panic!("no line matches the problem matcher: {text}"));
+    let group = |key: &str| {
+        let index = pattern[key].as_u64().expect("a group index") as usize;
+        captures.get(index).map_or("", |found| found.as_str()).to_owned()
+    };
+    assert!(group("file").ends_with("0001-x.md"), "{text}");
+    assert!(group("line").parse::<u32>().is_ok(), "{text}");
+    assert!(group("column").parse::<u32>().is_ok(), "{text}");
+    assert_eq!(group("severity"), "error", "{text}");
+    assert!(group("message").starts_with("expected level 3"), "{text}");
+}

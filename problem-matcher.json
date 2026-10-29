@@ -4,7 +4,7 @@
       "owner": "adrlint",
       "pattern": [
         {
-          "regexp": "^(.+):(\\d+):(\\d+)\\s+(error|warning)\\s+\\[[^\\]]+\\]\\s+(.+)$",
+          "regexp": "^(.+):(\\d+):(\\d+):\\s+(error|warning)\\s+\\[[^\\]]+\\]\\s+(.+)$",
           "file": 1,
           "line": 2,
           "column": 3,
