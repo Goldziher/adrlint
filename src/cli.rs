@@ -53,6 +53,14 @@ pub struct LintArgs {
     /// Output format
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
     pub format: OutputFormat,
+
+    /// Apply safe fixes, then lint again and report what remains
+    #[arg(long)]
+    pub fix: bool,
+
+    /// With --fix, write changes even when they alter the canonical content of a locked ADR
+    #[arg(long, requires = "fix")]
+    pub force: bool,
 }
 
 #[derive(Debug, Args)]

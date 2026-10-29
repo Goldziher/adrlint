@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -14,10 +14,13 @@ use adrlint::adr::{self, Document};
 use adrlint::cli::{Cli, Command, FormatArgs, InitArgs, LintArgs, LockArgs, NewArgs, UnlockArgs};
 use adrlint::lock::{self, LockFile};
 use adrlint::report::OutputFormat;
-use adrlint::{config, diagnostics, discovery, markdown, report, rules, template};
+use adrlint::{config, diagnostics, discovery, fix, markdown, parallel, report, rules, template};
 
 /// Titles produce one slug segment of at most this many bytes.
 const MAX_SLUG_LEN: usize = 80;
+
+/// ADRs larger than this are reported instead of parsed.
+const MAX_ADR_BYTES: u64 = 16 * 1024 * 1024;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -50,13 +53,30 @@ fn run(cli: Cli) -> Result<ExitCode> {
 fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitCode> {
     let loaded = config::load(config_path)?;
     report_unknown_rule_keys(&loaded);
-    let (findings, _, stale) = collect(&loaded, &args.paths, args.recursive, true)?;
-    if let Some(canonical) = stale {
+    let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
+
+    if args.fix {
+        let mode = FixMode {
+            check: false,
+            force: args.force,
+            structural: true,
+        };
+        let outcome = apply_fixes(&loaded, &directories, &mode)?;
+        for path in &outcome.changed {
+            eprintln!("fixed {}", path.display());
+        }
+    }
+
+    let collected = collect(&loaded, &directories, true)?;
+    if let Some(canonical) = collected.stale {
         report_stale_lock(&lock_path(&loaded), canonical);
     }
-    report::print(&findings, args.format, color)?;
+    report::print(&collected.findings, args.format, color)?;
+    if args.format == OutputFormat::Text {
+        eprintln!("{}", report::summarize(&collected.findings, collected.files));
+    }
 
-    if diagnostics::has_errors(&findings) {
+    if diagnostics::has_errors(&collected.findings) {
         Ok(ExitCode::from(1))
     } else {
         Ok(ExitCode::SUCCESS)
@@ -73,50 +93,15 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
 /// is still written: a reflow or a marker change never breaks a lock.
 fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCode> {
     let loaded = config::load(config_path)?;
-    let manifest = if loaded.config.lock.enabled {
-        lock::load(&lock_path(&loaded))?
-    } else {
-        LockFile::default()
-    };
     let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
-    let mut changed = Vec::new();
-    let mut refused = Vec::new();
-    let mut failed = false;
+    let mode = FixMode {
+        check: args.check,
+        force: args.force,
+        structural: false,
+    };
+    let outcome = apply_fixes(&loaded, &directories, &mode)?;
 
-    for directory in directories {
-        let scanned =
-            discovery::scan(&directory).with_context(|| format!("reading ADR directory {}", directory.display()))?;
-        for file in &scanned.adrs {
-            let source = match read_adr(&file.path) {
-                Ok(source) => source,
-                Err(finding) => {
-                    eprintln!("adrlint: {}: {}", finding.path.display(), finding.message);
-                    failed = true;
-                    continue;
-                }
-            };
-            let formatted = markdown::format(&source, &file.path, &loaded.config.markdown)?;
-            if formatted == source {
-                continue;
-            }
-            if changes_locked_content(&loaded, &manifest, &file.path, &formatted) && !args.force {
-                eprintln!(
-                    "refusing to change locked content of {} (use --force)",
-                    file.path.display()
-                );
-                refused.push(file.path.clone());
-                continue;
-            }
-            if !args.check {
-                reject_symlink(&file.path)?;
-                write_atomic(&file.path, formatted.as_bytes())
-                    .with_context(|| format!("writing {}", file.path.display()))?;
-            }
-            changed.push(file.path.clone());
-        }
-    }
-
-    for path in &changed {
+    for path in &outcome.changed {
         if args.check {
             println!("would reformat {}", path.display());
         } else {
@@ -124,10 +109,93 @@ fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCo
         }
     }
 
-    if failed || !refused.is_empty() || (args.check && !changed.is_empty()) {
+    if outcome.failed || !outcome.refused.is_empty() || (args.check && !outcome.changed.is_empty()) {
         return Ok(ExitCode::from(1));
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// How a fixing run treats files.
+struct FixMode {
+    /// Report what would change without writing.
+    check: bool,
+    /// Write even when a fix changes the canonical content of a locked ADR.
+    force: bool,
+    /// Also apply the structural MADR fixes, not just rumdl's.
+    structural: bool,
+}
+
+/// What a fixing run did, in directory and file order.
+#[derive(Default)]
+struct FixOutcome {
+    changed: Vec<PathBuf>,
+    refused: Vec<PathBuf>,
+    failed: bool,
+}
+
+/// The decision for one file, computed without touching the disk.
+enum Planned {
+    Unchanged,
+    Unreadable(diagnostics::Diagnostic),
+    Refused,
+    Write(String),
+}
+
+/// Fixes every ADR in `directories`.
+///
+/// Each file is read once and its fixed form is computed in parallel; the writes then happen in file
+/// order, so the report is identical across runs.
+fn apply_fixes(loaded: &config::Loaded, directories: &[PathBuf], mode: &FixMode) -> Result<FixOutcome> {
+    let manifest = if loaded.config.lock.enabled {
+        lock::load(&lock_path(loaded))?
+    } else {
+        LockFile::default()
+    };
+    let scanned = scan_all(directories)?;
+    let files = scanned.iter().flat_map(|directory| directory.adrs.iter()).collect::<Vec<_>>();
+    let planned = parallel::map(&files, |file| plan_fix(loaded, &manifest, mode, &file.path));
+
+    let mut outcome = FixOutcome::default();
+    for (file, plan) in files.iter().zip(planned) {
+        match plan? {
+            Planned::Unchanged => {}
+            Planned::Unreadable(finding) => {
+                eprintln!("adrlint: {}: {}", finding.path.display(), finding.message);
+                outcome.failed = true;
+            }
+            Planned::Refused => {
+                eprintln!(
+                    "refusing to change locked content of {} (use --force)",
+                    file.path.display()
+                );
+                outcome.refused.push(file.path.clone());
+            }
+            Planned::Write(fixed) => {
+                if !mode.check {
+                    reject_symlink(&file.path)?;
+                    write_atomic(&file.path, fixed.as_bytes())
+                        .with_context(|| format!("writing {}", file.path.display()))?;
+                }
+                outcome.changed.push(file.path.clone());
+            }
+        }
+    }
+    Ok(outcome)
+}
+
+fn plan_fix(loaded: &config::Loaded, manifest: &LockFile, mode: &FixMode, path: &Path) -> Result<Planned> {
+    let source = match read_adr(path) {
+        Ok(source) => source,
+        Err(finding) => return Ok(Planned::Unreadable(finding)),
+    };
+    let fixed = fix::fix_source(&source, path, &loaded.config.markdown, mode.structural)?;
+    if fixed == source {
+        return Ok(Planned::Unchanged);
+    }
+    if !mode.force && changes_locked_content(loaded, manifest, path, &fixed) {
+        return Ok(Planned::Refused);
+    }
+    Ok(Planned::Write(fixed))
 }
 
 /// Whether writing `formatted` would change the canonical content of a locked ADR.
@@ -144,34 +212,50 @@ fn changes_locked_content(loaded: &config::Loaded, manifest: &LockFile, path: &P
     lock::canonical_hash(&adr::parse(formatted)) != entry.blake3
 }
 
-type LintResult = (Vec<diagnostics::Diagnostic>, Vec<(PathBuf, Document)>, Option<u32>);
+/// Everything one lint run learned.
+struct Collected {
+    findings: Vec<diagnostics::Diagnostic>,
+    documents: Vec<(PathBuf, Document)>,
+    /// The canonical version of a manifest written by another serializer version.
+    stale: Option<u32>,
+    /// ADR files examined, including ones that could not be read.
+    files: usize,
+}
 
-/// Lints every ADR reachable from `paths`, returning the findings, the parsed documents and the
-/// stale canonical version when the manifest belongs to another serializer version.
-fn collect(loaded: &config::Loaded, paths: &[PathBuf], recursive: bool, check_lock: bool) -> Result<LintResult> {
-    let directories = resolve_directories(paths, loaded, recursive)?;
+/// One file's findings and, when it could be read, its parsed document.
+struct Checked {
+    findings: Vec<diagnostics::Diagnostic>,
+    document: Option<(PathBuf, Document)>,
+}
+
+/// Lists every directory in parallel, in the order given.
+fn scan_all(directories: &[PathBuf]) -> Result<Vec<discovery::Directory>> {
+    parallel::map(directories, |directory| {
+        discovery::scan(directory).with_context(|| format!("reading ADR directory {}", directory.display()))
+    })
+    .into_iter()
+    .collect()
+}
+
+/// Lints every ADR in `directories`.
+///
+/// The directories are listed and the files checked in parallel; each file is read exactly once for
+/// the MADR rules, the Markdown rules and the source lines the report quotes. Results are merged in
+/// input order and sorted, so the output does not depend on thread timing.
+fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -> Result<Collected> {
+    let scanned = scan_all(directories)?;
     let mut findings = Vec::new();
-    let mut documents = Vec::new();
-    let mut stale = None;
-
-    for directory in directories {
-        let scanned =
-            discovery::scan(&directory).with_context(|| format!("reading ADR directory {}", directory.display()))?;
-        findings.extend(rules::check_directory(&scanned, &loaded.config.adr));
-        for file in &scanned.adrs {
-            let source = match read_adr(&file.path) {
-                Ok(source) => source,
-                Err(finding) => {
-                    findings.push(finding);
-                    continue;
-                }
-            };
-            let document = adr::parse(&source);
-            findings.extend(rules::check_document(&document, &file.path, &loaded.root));
-            findings.extend(markdown::check(&source, &file.path, &loaded.config.markdown));
-            documents.push((file.path.clone(), document));
-        }
+    for directory in &scanned {
+        findings.extend(rules::check_directory(directory, &loaded.config.adr));
     }
+
+    let files = scanned.iter().flat_map(|directory| directory.adrs.iter()).collect::<Vec<_>>();
+    let mut documents = Vec::with_capacity(files.len());
+    for checked in parallel::map(&files, |file| check_file(loaded, &file.path)) {
+        findings.extend(checked.findings);
+        documents.extend(checked.document);
+    }
+    let mut stale = None;
 
     if check_lock && loaded.config.lock.enabled {
         let manifest = lock::load(&lock_path(loaded))?;
@@ -191,8 +275,42 @@ fn collect(loaded: &config::Loaded, paths: &[PathBuf], recursive: bool, check_lo
     }
 
     rules::apply_overrides(&mut findings, &loaded.config.rules);
+    diagnostics::add_default_help(&mut findings);
     diagnostics::sort(&mut findings);
-    Ok((findings, documents, stale))
+    Ok(Collected {
+        findings,
+        documents,
+        stale,
+        files: files.len(),
+    })
+}
+
+fn check_file(loaded: &config::Loaded, path: &Path) -> Checked {
+    let source = match read_adr(path) {
+        Ok(source) => source,
+        Err(finding) => {
+            return Checked {
+                findings: vec![finding],
+                document: None,
+            };
+        }
+    };
+    let document = adr::parse(&source);
+    let mut findings = rules::check_document(&document, path, &loaded.root);
+    findings.extend(markdown::check(&source, path, &loaded.config.markdown));
+    diagnostics::locate(&mut findings, &source);
+    fix::mark_fixable(&mut findings, &document, &source);
+    // rumdl's MD004 rewrites every list marker to `*`, which is what MADR31 asks for.
+    let markdown = &loaded.config.markdown;
+    if markdown.enabled && !markdown.is_off("MD004") {
+        for finding in findings.iter_mut().filter(|finding| finding.code == "MADR31") {
+            finding.fixable = true;
+        }
+    }
+    Checked {
+        findings,
+        document: Some((path.to_path_buf(), document)),
+    }
 }
 
 /// Warns once about `[rules]` and `[markdown.rules]` keys that cannot match a finding.
@@ -205,9 +323,22 @@ fn report_unknown_rule_keys(loaded: &config::Loaded) {
 }
 
 /// Reads an ADR, turning an IO or UTF-8 failure into a finding instead of aborting the whole run.
+///
+/// A file over [`MAX_ADR_BYTES`] is reported rather than read: no decision record is that large, and
+/// parsing it would stall the run.
 fn read_adr(path: &Path) -> std::result::Result<String, diagnostics::Diagnostic> {
-    let bytes = fs::read(path)
-        .map_err(|error| diagnostics::Diagnostic::error("ADR52", path, 1, format!("cannot read the ADR: {error}")))?;
+    let unreadable =
+        |error: std::io::Error| diagnostics::Diagnostic::error("ADR52", path, 1, format!("cannot read the ADR: {error}"));
+    let length = fs::metadata(path).map_err(unreadable)?.len();
+    if length > MAX_ADR_BYTES {
+        return Err(diagnostics::Diagnostic::error(
+            "ADR52",
+            path,
+            1,
+            format!("the ADR is {length} bytes, over the {MAX_ADR_BYTES} byte limit"),
+        ));
+    }
+    let bytes = fs::read(path).map_err(unreadable)?;
     String::from_utf8(bytes).map_err(|error| {
         diagnostics::Diagnostic::error("ADR52", path, 1, format!("the ADR is not valid UTF-8: {error}"))
     })
@@ -226,20 +357,57 @@ fn lock_path(loaded: &config::Loaded) -> PathBuf {
     loaded.root.join(&loaded.config.lock.path)
 }
 
+/// The ADR directories the paths (or the configuration, or discovery) name, sorted and unique.
+///
+/// Each root is walked at most once: discovery hands back the directories it already found, and with
+/// `--recursive` a root that lies inside another root is covered by that root's walk.
 fn resolve_directories(paths: &[PathBuf], loaded: &config::Loaded, recursive: bool) -> Result<Vec<PathBuf>> {
     let (sources, discovered) = roots(paths, loaded)?;
-    let recursive = recursive || discovered || loaded.config.adr.recursive;
-    let mut directories = BTreeSet::new();
+    if let Some(directories) = discovered {
+        return Ok(directories);
+    }
+    let recursive = recursive || loaded.config.adr.recursive;
+    let mut resolved = Vec::new();
     for source in sources {
-        for root in expand_source(&source)? {
-            if recursive {
-                directories.extend(descend(&root)?);
-            } else {
-                directories.insert(root);
-            }
-        }
+        resolved.extend(expand_source(&source)?);
+    }
+    if !recursive {
+        return Ok(resolved.into_iter().collect::<BTreeSet<_>>().into_iter().collect());
+    }
+    let mut directories = BTreeSet::new();
+    for root in prune_nested(resolved) {
+        directories.extend(descend(&root));
     }
     Ok(directories.into_iter().collect())
+}
+
+/// Drops duplicate roots and roots another root's recursive walk already reaches.
+///
+/// A root is covered when the path from the other root to it holds no hidden or skipped directory,
+/// because the walk would not enter one. A root under an ignored directory is therefore still walked
+/// on its own.
+fn prune_nested(mut roots: Vec<PathBuf>) -> Vec<PathBuf> {
+    roots.sort();
+    roots.dedup();
+    let mut kept: Vec<PathBuf> = Vec::new();
+    for root in roots {
+        if !kept.iter().any(|ancestor| is_reached_by(ancestor, &root)) {
+            kept.push(root);
+        }
+    }
+    kept
+}
+
+fn is_reached_by(ancestor: &Path, root: &Path) -> bool {
+    root.strip_prefix(ancestor).is_ok_and(|rest| {
+        rest.components().all(|component| match component {
+            Component::Normal(name) => {
+                let name = name.to_string_lossy();
+                !name.starts_with('.') && !SKIPPED_DIRECTORIES.contains(&name.as_ref())
+            }
+            _ => false,
+        })
+    })
 }
 
 /// One source as the user wrote it, plus the absolute form to read.
@@ -259,17 +427,18 @@ impl Source {
 }
 
 /// The sources to resolve, highest precedence first: CLI paths, then `[adr].paths`, then `[adr].dir`,
-/// and whether they were discovered rather than named.
+/// or, when none of those applies, the ADR directories discovered under the project root.
 ///
 /// CLI paths are interpreted relative to the working directory; configured paths are relative to the
 /// project root, so they are joined here rather than by the caller. With nothing named and no
 /// `docs/adr`, the project root is searched for ADR logs, so a repository with `adrs/<area>/` folders
-/// or a service's own `adrs/` works without configuration. A `dir` a configuration names must exist.
-fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<(Vec<Source>, bool)> {
+/// or a service's own `adrs/` works without configuration; that one walk is returned as the
+/// directories, not walked again. A `dir` a configuration names must exist.
+fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<(Vec<Source>, Option<Vec<PathBuf>>)> {
     if !paths.is_empty() {
         return Ok((
             paths.iter().map(|path| Source::new(path.clone(), path)).collect(),
-            false,
+            None,
         ));
     }
     if !loaded.config.adr.paths.is_empty() {
@@ -280,11 +449,11 @@ fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<(Vec<Source>, boo
             .iter()
             .map(|path| Source::new(loaded.root.join(path), path))
             .collect();
-        return Ok((sources, false));
+        return Ok((sources, None));
     }
     let directory = loaded.root.join(&loaded.config.adr.dir);
     if directory.is_dir() {
-        return Ok((vec![Source::new(directory, &loaded.config.adr.dir)], false));
+        return Ok((vec![Source::new(directory, &loaded.config.adr.dir)], None));
     }
     if loaded.config.adr.dir_configured {
         bail!(
@@ -292,13 +461,14 @@ fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<(Vec<Source>, boo
             directory.display()
         );
     }
-    if descend(&loaded.root)?.is_empty() {
+    let found = descend(&loaded.root);
+    if found.is_empty() {
         bail!(
             "no ADR log found under {} (no `docs/adr`, and no directory holds a NNNN-*.md file); run `adrlint init` first",
             loaded.root.display()
         );
     }
-    Ok((vec![Source::new(loaded.root.clone(), Path::new("."))], true))
+    Ok((Vec::new(), Some(found)))
 }
 
 /// Expands one source into ADR directories.
@@ -371,9 +541,14 @@ const SKIPPED_DIRECTORIES: [&str; 3] = [".git", "target", "node_modules"];
 /// directory holding a `NNNN`-prefixed Markdown file is scanned, and a directory with no ADR at all
 /// contributes nothing. Hidden directories, `target`, `node_modules` and whatever `.gitignore` excludes
 /// are skipped, symlinks are not followed, and the walk runs in parallel, so a monorepo root is fast.
-fn descend(root: &Path) -> Result<Vec<PathBuf>> {
+///
+/// A path the walk cannot read (a directory without permission, a broken `.gitignore`) is reported on
+/// stderr and skipped: one unreadable folder must not hide every other ADR log.
+fn descend(root: &Path) -> Vec<PathBuf> {
     let found = Mutex::new(BTreeSet::new());
-    let failure = Mutex::new(None);
+    let skipped = Mutex::new(BTreeSet::<String>::new());
+    let found_ref = &found;
+    let skipped_ref = &skipped;
     WalkBuilder::new(root)
         .hidden(true)
         .git_ignore(true)
@@ -386,29 +561,33 @@ fn descend(root: &Path) -> Result<Vec<PathBuf>> {
         })
         .build_parallel()
         .run(|| {
-            Box::new(|entry| {
+            // Entries of one directory arrive together, so remembering the last parent keeps the
+            // shared set off the hot path.
+            let mut last: Option<PathBuf> = None;
+            Box::new(move |entry| {
                 match entry {
                     Ok(entry) => {
                         let is_file = entry.file_type().is_some_and(|kind| kind.is_file());
                         if is_file
                             && discovery::is_numbered(&entry.file_name().to_string_lossy())
                             && let Some(parent) = entry.path().parent()
+                            && last.as_deref() != Some(parent)
                         {
-                            found.lock().expect("discovery set").insert(parent.to_path_buf());
+                            found_ref.lock().expect("discovery set").insert(parent.to_path_buf());
+                            last = Some(parent.to_path_buf());
                         }
                     }
                     Err(error) => {
-                        failure.lock().expect("discovery error").get_or_insert(error);
-                        return WalkState::Quit;
+                        skipped_ref.lock().expect("discovery errors").insert(error.to_string());
                     }
                 }
                 WalkState::Continue
             })
         });
-    if let Some(error) = failure.into_inner().expect("discovery error") {
-        return Err(anyhow::Error::new(error).context(format!("walking {}", root.display())));
+    for message in skipped.into_inner().expect("discovery errors") {
+        eprintln!("adrlint: warning: skipping a path under {}: {message}", root.display());
     }
-    Ok(found.into_inner().expect("discovery set").into_iter().collect())
+    found.into_inner().expect("discovery set").into_iter().collect()
 }
 
 /// Whether a directory directly holds a `NNNN-*.md`-shaped file.
@@ -530,7 +709,13 @@ fn lock_command(config_path: Option<&Path>, args: LockArgs) -> Result<ExitCode> 
         bail!("locking is disabled in the configuration; set lock.enabled = true to use it");
     }
 
-    let (findings, documents, stale) = collect(&loaded, &args.paths, args.recursive, true)?;
+    let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
+    let Collected {
+        findings,
+        documents,
+        stale,
+        ..
+    } = collect(&loaded, &directories, true)?;
     if diagnostics::has_errors(&findings) {
         report::print(&findings, OutputFormat::Text, true)?;
         if args.check {
