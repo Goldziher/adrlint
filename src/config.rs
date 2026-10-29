@@ -73,6 +73,13 @@ pub struct AdrConfig {
     pub start: u32,
     #[serde(default)]
     pub allow_gaps: bool,
+    /// Whether the roots are searched for nested ADR logs, as `--recursive` does.
+    #[serde(default)]
+    pub recursive: bool,
+    /// Whether a configuration layer named `dir`. Without one, a missing `docs/adr` is not an error:
+    /// the project is searched for ADR logs instead.
+    #[serde(skip)]
+    pub dir_configured: bool,
 }
 
 impl Default for AdrConfig {
@@ -82,6 +89,8 @@ impl Default for AdrConfig {
             paths: Vec::new(),
             start: default_start(),
             allow_gaps: false,
+            recursive: false,
+            dir_configured: false,
         }
     }
 }
@@ -172,6 +181,8 @@ struct AdrLayer {
     start: Option<u32>,
     #[serde(default)]
     allow_gaps: Option<bool>,
+    #[serde(default)]
+    recursive: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -198,6 +209,7 @@ impl Layer {
     fn apply_to(&self, config: &mut Config) {
         if let Some(dir) = &self.adr.dir {
             config.adr.dir = dir.clone();
+            config.adr.dir_configured = true;
         }
         // `paths` is a whole list: a layer that sets it replaces the list above it.
         if let Some(paths) = &self.adr.paths {
@@ -208,6 +220,9 @@ impl Layer {
         }
         if let Some(allow_gaps) = self.adr.allow_gaps {
             config.adr.allow_gaps = allow_gaps;
+        }
+        if let Some(recursive) = self.adr.recursive {
+            config.adr.recursive = recursive;
         }
 
         if let Some(enabled) = self.lock.enabled {
@@ -404,9 +419,12 @@ pub fn render(dir: &Path, start: u32) -> String {
 [adr]
 dir = {dir}
 # Additional roots, relative to this file: directories or glob patterns such as "adrs/*".
-# When non-empty they replace `dir`. Pair them with `--recursive` to include nested ADR
-# directories, and address one namespace with e.g. `adrlint lint adrs/team-a`.
+# When non-empty they replace `dir`. Pair them with `recursive` (or `--recursive`) to include
+# nested ADR directories, and address one namespace with e.g. `adrlint lint adrs/team-a`.
+# With neither `dir` nor `paths` configured and no `docs/adr`, the project is searched instead.
 paths = []
+# Search the roots for nested ADR logs, as `--recursive` does.
+recursive = false
 # 0 or 1. The base is fixed for the life of the directory; do not change it later.
 start = {start}
 # Only for imported histories that legitimately start with holes.

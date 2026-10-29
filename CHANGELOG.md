@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+
+- Zero-configuration discovery: with no paths, no `[adr].paths`, no configured `[adr].dir` and no
+  `docs/adr`, `lint`, `format` and `lock` search the project for ADR logs, so `adrs/<area>/` folders
+  and a service's own nested `adrs/` work out of the box. A configured `dir` that is missing is still
+  an error, and finding no log at all is reported.
+- `[adr].recursive`, so configured roots are searched for nested logs without passing `--recursive`.
+- A Lefthook example in the README.
+
+### Changed
+
+- Discovery walks the project in parallel and honours `.gitignore` (plus hidden directories,
+  `target` and `node_modules`), so a monorepo root takes about two seconds instead of ten.
+
+### Fixed
+
+- A date-prefixed document (`2026-07-01-design.md`) no longer makes its directory an ADR log, so
+  `--recursive .` stops reporting plans and specs as ADRs.
+- A Markdown file passed explicitly that is not an ADR and sits outside any ADR log (`adrs/README.md`,
+  an ADR template) is skipped, so pre-commit and Lefthook hooks that pass every changed file under
+  `adrs/` do not fail on the index or the template.
+
 ## 0.2.1 - 2026-10-29
 
 ### Fixed
