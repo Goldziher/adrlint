@@ -277,6 +277,7 @@ fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -
     rules::apply_overrides(&mut findings, &loaded.config.rules);
     diagnostics::add_default_help(&mut findings);
     diagnostics::sort(&mut findings);
+    findings.dedup();
     Ok(Collected {
         findings,
         documents,
@@ -879,4 +880,42 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         let _ = fs::remove_file(&temporary);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn paths(values: &[&str]) -> Vec<PathBuf> {
+        values.iter().map(PathBuf::from).collect()
+    }
+
+    #[test]
+    fn should_drop_duplicate_and_nested_roots() {
+        let pruned = prune_nested(paths(&["/p/adrs/team", "/p/adrs", "/p/adrs", "/p/other"]));
+        assert_eq!(pruned, paths(&["/p/adrs", "/p/other"]));
+    }
+
+    #[test]
+    fn should_keep_a_root_the_outer_walk_would_not_enter() {
+        let pruned = prune_nested(paths(&["/p/adrs", "/p/adrs/node_modules/x", "/p/adrs/.hidden"]));
+        assert_eq!(pruned, paths(&["/p/adrs", "/p/adrs/.hidden", "/p/adrs/node_modules/x"]));
+    }
+
+    #[test]
+    fn should_not_treat_a_sibling_with_a_shared_prefix_as_nested() {
+        let pruned = prune_nested(paths(&["/p/adrs", "/p/adrs-old"]));
+        assert_eq!(pruned, paths(&["/p/adrs", "/p/adrs-old"]));
+    }
+
+    #[test]
+    fn should_report_an_oversized_adr_instead_of_reading_it() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("0001-huge.md");
+        let file = fs::File::create(&path).unwrap();
+        file.set_len(MAX_ADR_BYTES + 1).unwrap();
+        let finding = read_adr(&path).unwrap_err();
+        assert_eq!(finding.code, "ADR52");
+        assert!(finding.message.contains("byte limit"), "{}", finding.message);
+    }
 }
