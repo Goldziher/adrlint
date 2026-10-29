@@ -3,8 +3,10 @@
 //! One rule set is built per run from `[markdown]`, so `format` and `lint` agree about which rules
 //! are active: a rule set to `off` produces no finding and no fix.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::rc::Rc;
 
 use anyhow::{Context, Result, anyhow};
 use rumdl_lib::config::{Config as RumdlConfig, RuleConfig};
@@ -55,6 +57,28 @@ impl Engine {
     }
 }
 
+thread_local! {
+    /// The engine last built on this thread, keyed by the `[markdown.rules]` it was built from.
+    ///
+    /// Building the rule set costs more than linting a small ADR, so a worker thread builds it once
+    /// and reuses it for every file it handles.
+    static ENGINE: RefCell<Option<(BTreeMap<String, String>, Rc<Engine>)>> = const { RefCell::new(None) };
+}
+
+fn engine(markdown: &MarkdownConfig) -> Rc<Engine> {
+    ENGINE.with(|cell| {
+        let mut cached = cell.borrow_mut();
+        if let Some((rules, engine)) = cached.as_ref()
+            && *rules == markdown.rules
+        {
+            return Rc::clone(engine);
+        }
+        let engine = Rc::new(Engine::new(markdown));
+        *cached = Some((markdown.rules.clone(), Rc::clone(&engine)));
+        engine
+    })
+}
+
 /// Lints one ADR with rumdl, mapping every warning to an adrlint finding.
 ///
 /// Rules disabled in `markdown.rules` are absent from the rule set, and a finding is filtered again
@@ -64,7 +88,7 @@ pub fn check(source: &str, path: &Path, markdown: &MarkdownConfig) -> Vec<Diagno
         return Vec::new();
     }
 
-    let engine = Engine::new(markdown);
+    let engine = engine(markdown);
     let analysis = match DocumentRun::new(source, &engine.rules, &engine.config)
         .file_path(path)
         .analyze()
@@ -92,14 +116,24 @@ pub fn check(source: &str, path: &Path, markdown: &MarkdownConfig) -> Vec<Diagno
             if markdown.is_off(code) {
                 return None;
             }
-            Some(Diagnostic {
+            let fixable = warning.fix.is_some();
+            let mut diagnostic = Diagnostic {
                 code,
                 severity: severity(markdown, code, warning.severity),
                 message: warning.message,
                 path: path.to_path_buf(),
                 line: warning.line,
                 column: warning.column,
-            })
+                end_line: None,
+                end_column: None,
+                help: None,
+                fixable,
+            };
+            if warning.end_line >= warning.line && warning.end_column > 0 {
+                diagnostic.end_line = Some(warning.end_line);
+                diagnostic.end_column = Some(warning.end_column);
+            }
+            Some(diagnostic)
         })
         .collect()
 }
@@ -112,7 +146,7 @@ pub fn format(source: &str, path: &Path, markdown: &MarkdownConfig) -> Result<St
         return Ok(source.to_owned());
     }
 
-    let engine = Engine::new(markdown);
+    let engine = engine(markdown);
     let (fixed, _) = DocumentRun::new(source, &engine.rules, &engine.config)
         .file_path(path)
         .fix(MAX_FIX_ITERATIONS)
