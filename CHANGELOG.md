@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.3.0 - 2026-10-29
 
 ### Added
 
@@ -11,7 +11,8 @@ All notable changes to this project are documented in this file.
   and a service's own nested `adrs/` work out of the box. A configured `dir` that is missing is still
   an error, and finding no log at all is reported.
 - `[adr].recursive`, so configured roots are searched for nested logs without passing `--recursive`.
-- A Lefthook example in the README.
+- A README rewritten around installation and integration paths: every package channel, prebuilt
+  archives with checksum verification, the GitHub Action, pre-commit, Lefthook and generic CI.
 - `adrlint lint --fix` (with `--force`): applies rumdl's fixes plus the unambiguous MADR heading-level
   fix for `Consequences` and `Confirmation`, respects the immutability lock like `format`, then lints
   again and reports what remains.
@@ -31,12 +32,12 @@ All notable changes to this project are documented in this file.
 
 - `format` and `lint --fix` rewrite numbered ADRs only; a README or template inside an ADR directory
   is still linted but never reformatted, and its findings are not marked fixable.
-
 - Directories are listed and ADRs checked in parallel, each file is read once and the Markdown rule
   set is built once per worker thread; output is sorted, so it is byte-identical across runs.
   Inputs that reach the same directory are merged before linting, so each file is checked once.
 - Discovery walks once: the directories found for zero-config runs are reused, and the directories
-  of overlapping recursive roots are merged. A path the walk cannot read is a stderr warning instead of an abort.
+  of overlapping recursive roots are merged. A path the walk cannot read is a stderr warning instead
+  of an abort.
 - An ADR larger than 16 MiB is reported as `ADR52` instead of being parsed.
 - Discovery walks the project in parallel and honours `.gitignore` (plus hidden directories,
   `target` and `node_modules`), so a monorepo root takes about two seconds instead of ten.
@@ -57,6 +58,8 @@ All notable changes to this project are documented in this file.
 - A path that exists is read literally even if it holds `[`, and GitHub annotations escape `:` and `,`
   in file names. Text and GitHub spans end at the end of the line's content.
 - `lint --fix` exits 1 when it refused to change a locked ADR.
+- The GitHub Action's problem matcher matches the text output (it expected no colon after the
+  column), so a plain `lint` run annotates findings.
 - `MADR42` exempts an image (`png`, `jpg`, `jpeg`, `gif`, `svg`, `webp`) that an ADR in the same
   log links to or embeds; an unreferenced image is still reported.
 - `lock` honours `--no-color` when it prints the errors that stop it.
@@ -80,7 +83,6 @@ All notable changes to this project are documented in this file.
 - `format` and `lint --fix` refuse a fix to a locked ADR only when the fix itself changes its
   canonical content: an ADR that already drifted can still be reflowed, and a manifest from another
   canonical version no longer lets a content-changing fix through without `--force`.
-
 - A log made only of three-digit (`001-x.md`) or five-digit (`00001-x.md`) names is discovered,
   so its files reach `MADR44` instead of being skipped.
 - A date-prefixed document (`2026-07-01-design.md`) no longer makes its directory an ADR log, so
