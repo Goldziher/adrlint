@@ -26,9 +26,7 @@ merged in.
 
 ### Shape
 
-The 0.3.0 release parses `[adr]`, `[lint]`, `[lock]`, `[markdown]` and `[rules]`. `[lint]` has one
-key, `check_external_links`, which opts in to external link checking (`MADR11`);
-`adrlint lint --check-external-links` does the same for one run.
+The 0.3.0 release parses `[adr]`, `[lint]`, `[lock]`, `[markdown]` and `[rules]`.
 
 ```toml
 [adr]

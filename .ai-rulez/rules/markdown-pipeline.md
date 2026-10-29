@@ -38,9 +38,8 @@ download.
   configured with `[markdown.rules]`.
 - Defaults are opinionated: MD013 (line length) is off because ADR prose is reflowed by authors, and
   MD033 (inline HTML) is off because decision records legitimately embed HTML tables. MD004 is pinned
-  to `*` so the formatter cannot choose a marker MADR31 rejects; the pin is hard-coded in
-  `Engine::new` (`src/markdown/rumdl.rs`), not written into the generated config. Do not silently
-  change a rumdl default; write the override in the generated config.
+  to `*` in `Engine::new` so the formatter cannot choose a marker MADR31 rejects. Do not silently
+  change a rumdl default.
 - rumdl's MSRV is adrlint's MSRV. Bumping rumdl can alter formatting, but locking hashes content
   rather than formatted bytes, so a formatter bump never invalidates a lock.
 
@@ -49,8 +48,7 @@ download.
 - Sort by path, line, column and code. Rule families emit disjoint code sets, so a duplicate
   `(path, line, code)` is a rule bug rather than something to hide by de-duplicating.
 - A finding carries a stable rule code, severity, message, path, line and column. MADR/ADR findings
-  start at column 1 and `diagnostics::locate` (`src/diagnostics.rs`) moves the column to the first
-  non-whitespace character of the line and adds an end span; rumdl supplies its own column.
+  are placed by `diagnostics::locate` (first non-blank column plus an end span); rumdl supplies its own.
 - `lint` writes only with `--fix`. Fixes are applied by `format` and `lint --fix`, after the full
   finding set is computed.
 - Never locate a construct by searching the rendered text. Regex over a node's text, once the parse
@@ -58,9 +56,8 @@ download.
 
 ### Links
 
-External link checking (`MADR11`) is opt-in, through `[lint].check_external_links = true` or
-`lint --check-external-links`, and its findings default to warning. It is off by default because it
-needs network access and makes a lint run non-deterministic. Local paths, root-relative paths and
+External link checking (`MADR11`) is opt-in (`[lint].check_external_links`, `--check-external-links`)
+and warns by default, because it needs the network and is non-deterministic. Local paths, root-relative paths and
 anchor links are always checked offline; anchors are matched against slugs generated from the parsed
 heading tree, not guessed. A protocol-relative destination (`//host`) is external, never a
 root-relative path.

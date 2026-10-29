@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.9.2'
 scope = 'all'
-tree = 'sha256:8b1adc21e82f04f835662948f427a75b72703fd736884396364195480f690159'
+tree = 'sha256:c1658e60aa900d314fe0303ffe1beb7956947248b69ac82a6dd9c3fb930f157f'
 
 [[served]]
 name = 'build'
@@ -172,7 +172,7 @@ digest = 'sha256:c78115a5173a18ebceae477cb22e7f0b05e90298c29932a85a6c4c215ddb71e
 kind = 'rule'
 id = 'configuration-system'
 path = 'rules/configuration-system.md'
-digest = 'sha256:b7b57a57a4dcd31f1c4437593312018abb37711adf7bff5b76654d3407e54bb1'
+digest = 'sha256:38028ec4fa76c425f8314e13971a65a3f75c23777d033ad0500537b61303e438'
 
 [[item]]
 kind = 'rule'
@@ -190,7 +190,7 @@ digest = 'sha256:811e237f29470eb0f29697ea315d7cd3a21c1a3ddc0ab40e2794f0b5c6eae5a
 kind = 'rule'
 id = 'markdown-pipeline'
 path = 'rules/markdown-pipeline.md'
-digest = 'sha256:24c8efdabd4292f0964af5f85b1d0e72ac761ea218d83029d38bebc9ca0cc5f1'
+digest = 'sha256:c2f75ce5db0aa6986268d66c70cd06b8339f7a5d0600db796f95591d4d408e3f'
 
 [[item]]
 kind = 'rule'
