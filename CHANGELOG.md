@@ -47,7 +47,8 @@ All notable changes to this project are documented in this file.
   and a rewritten file keeps its permissions. `lint --fix` rewrites only numbered ADRs, never a
   README or template inside a log.
 - A file a hook passes that the commit deletes lints the log it leaves instead of aborting the run.
-- A recursive root with no ADR log under it is reported instead of passing with nothing checked.
+- A recursive root with no ADR log under it, passed on the command line or configured with
+  `[adr].recursive`, is reported instead of passing with nothing checked.
 - `lint --fix` and `format` given only files (as a hook passes its staged files) rewrite only those
   files, never a sibling ADR with unstaged edits, and a symlinked ADR stops the run before any write.
 - A mistyped path is an error again; only a missing `.md` file (one a commit deletes) is skipped.

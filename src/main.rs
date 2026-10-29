@@ -476,8 +476,9 @@ fn resolve_directories(paths: &[PathBuf], loaded: &config::Loaded, recursive: bo
     for root in &roots {
         directories.extend(descend(root));
     }
-    // Paths a hook passed that all sit outside any log leave no root, which is not an error.
-    if directories.is_empty() && !paths.is_empty() && !roots.is_empty() {
+    // Paths a hook passed that all sit outside any log leave no root, which is not an error. A root
+    // that was named, on the command line or in the configuration, and holds no log is.
+    if directories.is_empty() && !roots.is_empty() {
         bail!(
             "no ADR log found under {} (no directory there holds a NNNN-*.md file)",
             roots

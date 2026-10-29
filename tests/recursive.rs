@@ -657,3 +657,19 @@ fn should_read_an_existing_path_with_brackets_literally() {
     let output = lint_json(&directory, &["adrs/[draft]/0001-a.md"]);
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
 }
+
+#[test]
+fn should_report_a_configured_recursive_root_without_any_log() {
+    let directory = TempDir::new().expect("temporary directory");
+    fs::write(
+        directory.path().join(".adrlint.toml"),
+        "[adr]\ndir = \"docs/adr\"\npaths = []\nrecursive = true\n",
+    )
+    .expect("writing the configuration");
+    fs::create_dir_all(directory.path().join("docs/adr")).expect("creating the ADR folder");
+    fs::write(directory.path().join("docs/adr/adr-1.md"), "# not numbered\n").expect("writing a note");
+
+    let output = run(&directory, &["lint"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert!(stderr(&output).contains("no ADR log found"), "{}", stderr(&output));
+}
