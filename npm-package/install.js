@@ -16,7 +16,7 @@ const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 
 // Must stay in step with the archives .github/workflows/publish.yaml uploads.
 const TRIPLES = {
-  "Windows_NT:x64": "x86_64-pc-windows-gnu",
+  "Windows_NT:x64": "x86_64-pc-windows-msvc",
   "Linux:x64": "x86_64-unknown-linux-gnu",
   "Linux:arm64": "aarch64-unknown-linux-gnu",
   "Darwin:x64": "x86_64-apple-darwin",

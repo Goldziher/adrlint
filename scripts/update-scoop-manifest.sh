@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# update-scoop-manifest.sh <version> <checksums-file>
+# Reads the release checksums file (`adrlint_<version>_checksums.txt`) and prints the Scoop
+# manifest. Only the Windows MSVC archive is published, so the manifest has a single 64-bit entry.
+
+if [ $# -ne 2 ]; then
+  echo "Usage: $0 <version> <checksums-file>" >&2
+  exit 1
+fi
+
+VERSION="$1"
+SUMS="$2"
+
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+  echo "invalid version '$VERSION': expected <major>.<minor>.<patch> with an optional -<suffix>" >&2
+  exit 1
+fi
+
+if [ ! -r "$SUMS" ]; then
+  echo "cannot read checksums file '$SUMS'" >&2
+  exit 1
+fi
+
+TRIPLE="x86_64-pc-windows-msvc"
+ARCHIVE="adrlint-${TRIPLE}.zip"
+BASE="https://github.com/Goldziher/adrlint/releases/download/v${VERSION}"
+
+# Checksum lines are `<sha256>  <name>`, optionally with a `*` binary-mode marker before the name.
+HASH="$(awk -v f="$ARCHIVE" '{ n = $NF; sub(/^[*]/, "", n); if (n == f) print $1 }' "$SUMS")"
+
+if [ -z "$HASH" ]; then
+  echo "missing checksum for ${ARCHIVE} in ${SUMS}" >&2
+  exit 1
+fi
+
+if ! [[ "$HASH" =~ ^[0-9a-f]{64}$ ]]; then
+  echo "malformed checksum for ${ARCHIVE} in ${SUMS}: '${HASH}' is not a sha256 digest" >&2
+  exit 1
+fi
+
+# `\$version` is a Scoop placeholder that Scoop substitutes during `scoop update`; only the
+# literal manifest values come from the shell.
+cat <<EOF
+{
+    "version": "${VERSION}",
+    "description": "A fast, opinionated linter and formatter for MADR architecture decision records",
+    "homepage": "https://github.com/Goldziher/adrlint",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "${BASE}/${ARCHIVE}",
+            "hash": "${HASH}"
+        }
+    },
+    "bin": "adrlint.exe",
+    "checkver": {
+        "github": "https://github.com/Goldziher/adrlint"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/Goldziher/adrlint/releases/download/v\$version/${ARCHIVE}"
+            }
+        },
+        "hash": {
+            "url": "https://github.com/Goldziher/adrlint/releases/download/v\$version/adrlint_\$version_checksums.txt"
+        }
+    }
+}
+EOF

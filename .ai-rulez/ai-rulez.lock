@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.9.2'
 scope = 'all'
-tree = 'sha256:d47b61acf7d106adffb09f1e0b0a352c3e5fb68465c6cb72373e2bff8e6c209d'
+tree = 'sha256:e252f343aa7a01c8646beae4f5238224c46ad66e7559cc005c62887060d5d73c'
 
 [[served]]
 name = 'build'
@@ -178,7 +178,7 @@ digest = 'sha256:0777557c93990ac27c94d7d27ef6cdde0b025d1ea767d550b680a145dc3d125
 kind = 'rule'
 id = 'cross-platform-distribution'
 path = 'rules/cross-platform-distribution.md'
-digest = 'sha256:6a012073119fa801150a2132d5e9ecd25a0a285d6f256b0b765218c7059a7542'
+digest = 'sha256:eb447d76ba3a7e06f0ac9646212e0f24982bba6602f3874a9451343eee93b0c1'
 
 [[item]]
 kind = 'rule'

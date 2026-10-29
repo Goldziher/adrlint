@@ -162,7 +162,7 @@ jobs:
             release_assets_exist=true
             for asset in adrlint-x86_64-unknown-linux-gnu.tar.gz adrlint-aarch64-unknown-linux-gnu.tar.gz \
               adrlint-aarch64-apple-darwin.tar.gz adrlint-x86_64-apple-darwin.tar.gz \
-              adrlint-x86_64-pc-windows-gnu.zip; do
+              adrlint-x86_64-pc-windows-msvc.zip; do
               if ! grep -Fxq "$asset" <<< "$assets"; then
                 release_assets_exist=false
               fi
@@ -295,14 +295,17 @@ jobs:
         run: gh release upload "$TAG" "adrlint-${TRIPLE}.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
 
   build-windows:
-    name: Build Windows / x86_64-pc-windows-gnu
+    name: Build Windows / x86_64-pc-windows-msvc
     needs: [meta, verify, create_release]
     if: needs.verify.result == 'success' && needs.create_release.result == 'success'
-    runs-on: ubuntu-latest
+    # rumdl depends on tikv-jemallocator on every target except msvc and wasm; tikv-jemalloc-sys
+    # cannot link against the mingw runtime, so the Windows archive is built on Windows with the
+    # MSVC toolchain rather than cross-compiled on Linux.
+    runs-on: windows-latest
     permissions:
       contents: write
     env:
-      TRIPLE: x86_64-pc-windows-gnu
+      TRIPLE: x86_64-pc-windows-msvc
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -310,39 +313,38 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
-      - name: Install mingw-w64
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-mingw-w64-x86-64 zip
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: "1.94"
-          targets: x86_64-pc-windows-gnu
+          targets: x86_64-pc-windows-msvc
 
       - name: Setup cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          key: x86_64-pc-windows-gnu
+          key: x86_64-pc-windows-msvc
 
       - name: Build release binary
-        env:
-          CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
-          CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
-          AR_x86_64_pc_windows_gnu: x86_64-w64-mingw32-ar
-        run: cargo build --release --bin adrlint --target x86_64-pc-windows-gnu
+        shell: pwsh
+        run: cargo build --release --bin adrlint --target $env:TRIPLE
 
       - name: Package archive
+        shell: pwsh
         run: |
-          set -euo pipefail
-          zip -j "adrlint-${TRIPLE}.zip" "target/${TRIPLE}/release/adrlint.exe"
+          $ErrorActionPreference = 'Stop'
+          $binary = "target/$env:TRIPLE/release/adrlint.exe"
+          if (-not (Test-Path $binary)) {
+            throw "$binary was not produced by the build"
+          }
+          $archive = "adrlint-$env:TRIPLE.zip"
+          Compress-Archive -Path $binary -DestinationPath $archive -CompressionLevel Optimal -Force
 
       - name: Upload to GitHub release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.meta.outputs.tag }}
-        run: gh release upload "$TAG" "adrlint-${TRIPLE}.zip" --clobber --repo "$GITHUB_REPOSITORY"
+        run: gh release upload "$env:TAG" "adrlint-$env:TRIPLE.zip" --clobber --repo "$env:GITHUB_REPOSITORY"
 
   build-linux:
     name: Build Linux / ${{ matrix.triple }}
@@ -450,7 +452,7 @@ jobs:
             "adrlint-aarch64-unknown-linux-gnu.tar.gz"
             "adrlint-aarch64-apple-darwin.tar.gz"
             "adrlint-x86_64-apple-darwin.tar.gz"
-            "adrlint-x86_64-pc-windows-gnu.zip"
+            "adrlint-x86_64-pc-windows-msvc.zip"
           )
 
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' > /tmp/assets.txt || true
@@ -499,7 +501,7 @@ jobs:
             "adrlint-aarch64-unknown-linux-gnu.tar.gz"
             "adrlint-aarch64-apple-darwin.tar.gz"
             "adrlint-x86_64-apple-darwin.tar.gz"
-            "adrlint-x86_64-pc-windows-gnu.zip"
+            "adrlint-x86_64-pc-windows-msvc.zip"
             "adrlint_${version}_checksums.txt"
           )
 
@@ -566,7 +568,7 @@ jobs:
         [
           {"os": "ubuntu-latest", "target": "x86_64-unknown-linux-gnu"},
           {"os": "macos-latest", "target": "aarch64-apple-darwin"},
-          {"os": "windows-latest", "target": "x86_64-pc-windows-gnu"}
+          {"os": "windows-latest", "target": "x86_64-pc-windows-msvc"}
         ]
       smoke-command: |
         adrlint --version
@@ -734,6 +736,59 @@ jobs:
           git add Formula/adrlint.rb
           if git diff --cached --quiet; then
             echo "Formula already up to date."
+          else
+            git commit -m "adrlint ${version}"
+            git push
+          fi
+
+  publish_scoop:
+    name: Update Scoop manifest
+    needs: [meta, verify, finalize_release]
+    if: needs.meta.result == 'success' && needs.verify.result == 'success' && needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
+
+      - name: Generate manifest and push to the Scoop bucket
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A PAT with push access to Goldziher/scoop-bucket. The same token already maintains the
+          # Homebrew tap, so one secret covers both taps.
+          HOMEBREW_TOKEN: ${{ secrets.HOMEBREW_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TOKEN:-}" ]; then
+            echo "HOMEBREW_TOKEN not set; skipping the Scoop manifest update."
+            exit 0
+          fi
+          tag="$TAG"
+          version="$VERSION"
+          gh release download "$tag" -p "adrlint_${version}_checksums.txt" -O checksums.txt
+          ./scripts/update-scoop-manifest.sh "$version" checksums.txt > adrlint.json
+
+          # The credential is passed to git through the environment (GIT_CONFIG_*), so it never
+          # appears in argv or in the clone's .git/config.
+          basic="$(printf 'x-access-token:%s' "$HOMEBREW_TOKEN" | base64 | tr -d '\n')"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.extraheader
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${basic}"
+
+          git clone --depth 1 https://github.com/Goldziher/scoop-bucket.git bucket-repo
+          cp adrlint.json bucket-repo/bucket/adrlint.json
+          cd bucket-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bucket/adrlint.json
+          if git diff --cached --quiet; then
+            echo "Scoop manifest already up to date."
           else
             git commit -m "adrlint ${version}"
             git push

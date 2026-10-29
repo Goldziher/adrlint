@@ -249,6 +249,7 @@ fn every_build_and_publish_job_requires_the_verify_job() {
         "publish_npm",
         "publish_pypi",
         "publish_homebrew",
+        "publish_scoop",
     ] {
         let block = job_block(&text, job);
         let needs = block
@@ -340,6 +341,315 @@ fn the_action_installer_extracts_only_the_expected_member() {
     );
 }
 
+/// Every file that maps a platform onto a release archive: the workflows, the composite action at
+/// the repository root, and the three installers that download the archive.
+fn platform_maps() -> Vec<(String, String)> {
+    let mut files = action_yaml_files();
+    for relative in [
+        "npm-package/install.js",
+        "pip-package/adrlint/downloader.py",
+        "scripts/gh-action-resolve.sh",
+        "scripts/gh-action-install.sh",
+        "scripts/gh-action-run.sh",
+    ] {
+        files.push((relative.to_owned(), read(relative)));
+    }
+    files
+}
+
+/// The Windows archive is built natively with MSVC because rumdl's `tikv-jemallocator` dependency
+/// is dropped on msvc and `tikv-jemalloc-sys` cannot link for `x86_64-pc-windows-gnu`. A leftover
+/// `windows-gnu` reference would publish a triple no installer requests, or request one no build
+/// publishes.
+#[test]
+fn no_release_surface_still_names_the_windows_gnu_target() {
+    for (name, text) in platform_maps() {
+        for needle in ["windows-gnu", "windows_gnu"] {
+            assert!(
+                !text.contains(needle),
+                "{name} still references `{needle}`; the Windows archive is `x86_64-pc-windows-msvc`"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_windows_archive_is_built_natively_with_msvc() {
+    let text = read(".github/workflows/publish.yaml");
+    let block = job_block(&text, "build-windows");
+
+    assert!(
+        block.contains("runs-on: windows-latest"),
+        "the Windows archive must be built on a Windows runner, not cross-compiled"
+    );
+    assert!(
+        block.contains("TRIPLE: x86_64-pc-windows-msvc"),
+        "build-windows must target x86_64-pc-windows-msvc"
+    );
+    assert!(
+        block.contains("targets: x86_64-pc-windows-msvc"),
+        "the Windows job must install the msvc target"
+    );
+    assert!(
+        block.contains("cargo build --release --bin adrlint --target $env:TRIPLE"),
+        "build-windows must build the binary for its target"
+    );
+
+    // The mingw cross-build is what failed on 0.1.0; none of its toolchain setup may return. The
+    // job's own comment explains why msvc is required, so only executable lines are checked.
+    let commands: String = block
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    for stale in ["mingw", "x86_64-w64-mingw32", "apt-get"] {
+        assert!(
+            !commands.contains(stale),
+            "build-windows still runs `{stale}`-related setup; the job builds natively with MSVC"
+        );
+    }
+
+    assert!(
+        block.contains("Compress-Archive"),
+        "the Windows archive must be packaged with Compress-Archive"
+    );
+    assert!(
+        block.contains(r#""target/$env:TRIPLE/release/adrlint.exe""#),
+        "Compress-Archive must package the produced adrlint.exe"
+    );
+    assert!(
+        block.contains(r#""adrlint-$env:TRIPLE.zip""#),
+        "the archive must be named adrlint-<triple>.zip"
+    );
+    assert!(
+        block.contains("gh release upload"),
+        "build-windows must upload its archive to the release"
+    );
+}
+
+#[test]
+fn every_installer_requests_the_msvc_windows_archive() {
+    let npm = read("npm-package/install.js");
+    assert!(
+        npm.contains(r#""Windows_NT:x64": "x86_64-pc-windows-msvc","#),
+        "the npm wrapper must resolve Windows x64 to the msvc archive"
+    );
+    assert!(
+        npm.contains(r#"const archiveName = `adrlint-${triple}.${isWindows ? "zip" : "tar.gz"}`;"#),
+        "the npm wrapper must still request a .zip on Windows"
+    );
+
+    let python = read("pip-package/adrlint/downloader.py");
+    assert!(
+        python.contains(r#"return "x86_64-pc-windows-msvc""#),
+        "the pip wrapper must resolve Windows amd64 to the msvc archive"
+    );
+    assert!(
+        python.contains(r#"ext = "zip" if "windows" in triple else "tar.gz""#),
+        "the pip wrapper must still request a .zip on Windows"
+    );
+
+    let resolve = read("scripts/gh-action-resolve.sh");
+    assert!(
+        resolve.contains(r#"X64) triple="x86_64-pc-windows-msvc" ;;"#),
+        "the GitHub Action must resolve Windows X64 to the msvc archive"
+    );
+
+    let install = read("scripts/gh-action-install.sh");
+    assert!(
+        install.contains(r#"bin_name="adrlint.exe""#),
+        "the GitHub Action must publish adrlint.exe on Windows"
+    );
+    assert!(
+        install.contains("zip)"),
+        "the GitHub Action installer must still handle the .zip archive"
+    );
+}
+
+#[test]
+fn the_release_asset_lists_name_the_msvc_archive() {
+    let text = read(".github/workflows/publish.yaml");
+    let archive = "adrlint-x86_64-pc-windows-msvc.zip";
+
+    for job in ["meta", "checksums", "finalize_release"] {
+        assert!(
+            job_block(&text, job).contains(archive),
+            "job `{job}` does not expect {archive} on the release"
+        );
+    }
+
+    assert!(
+        job_block(&text, "verify-binstall").contains(r#"{"os": "windows-latest", "target": "x86_64-pc-windows-msvc"}"#),
+        "the binstall smoke test must install the msvc archive"
+    );
+}
+
+#[test]
+fn the_scoop_manifest_matches_the_published_assets() {
+    let script = read("scripts/update-scoop-manifest.sh");
+
+    assert!(script.starts_with("#!/usr/bin/env bash"));
+    assert!(
+        script.contains("set -euo pipefail"),
+        "the manifest generator must fail on any error"
+    );
+
+    assert!(
+        script.contains(r#"TRIPLE="x86_64-pc-windows-msvc""#),
+        "the Scoop manifest must ship the msvc archive"
+    );
+    assert!(
+        script.contains(r#"ARCHIVE="adrlint-${TRIPLE}.zip""#),
+        "the Scoop manifest must point at the release zip"
+    );
+    assert!(
+        script.contains(r#"BASE="https://github.com/Goldziher/adrlint/releases/download/v${VERSION}""#),
+        "the manifest URL must be the release download URL for the version"
+    );
+
+    // The pinned URL and hash describe the asset the release workflow uploads.
+    assert!(
+        script.contains(r#""url": "${BASE}/${ARCHIVE}""#),
+        "architecture.64bit.url must be the release archive"
+    );
+    assert!(
+        script.contains(r#""hash": "${HASH}""#),
+        "architecture.64bit.hash must come from the checksums file"
+    );
+    assert!(
+        script.contains("if (n == f) print $1"),
+        "the hash must be looked up by archive name in the checksums file"
+    );
+
+    for field in [
+        r#""bin": "adrlint.exe","#,
+        r#""license": "MIT","#,
+        r#""homepage": "https://github.com/Goldziher/adrlint","#,
+    ] {
+        assert!(script.contains(field), "the manifest is missing {field}");
+    }
+
+    assert!(
+        script.contains(r#""github": "https://github.com/Goldziher/adrlint""#),
+        "checkver must follow the GitHub repository"
+    );
+    assert!(
+        script.contains(r#"releases/download/v\$version/${ARCHIVE}"#),
+        "autoupdate.architecture.64bit.url must substitute Scoop's $version placeholder"
+    );
+    assert!(
+        script.contains(r#"releases/download/v\$version/adrlint_\$version_checksums.txt"#),
+        "autoupdate.hash.url must point at the release checksums file"
+    );
+
+    // A missing entry is a release defect, not something to paper over with an empty hash.
+    let missing = line_number(&script, "missing checksum for ${ARCHIVE} in ${SUMS}");
+    let tail = &script[missing..];
+    let end = tail
+        .find("\nfi")
+        .unwrap_or_else(|| panic!("the missing-checksum branch is not closed by `fi`"));
+    assert!(
+        tail[..end].contains("exit 1"),
+        "a missing checksum must fail the script instead of emitting a partial manifest"
+    );
+    assert!(
+        script.contains(r#"[[ "$HASH" =~ ^[0-9a-f]{64}$ ]]"#),
+        "the manifest must refuse a malformed digest"
+    );
+
+    // Deterministic: nothing may depend on the clock or on randomness.
+    for nondeterministic in ["$(date", "$RANDOM"] {
+        assert!(
+            !script.contains(nondeterministic),
+            "the manifest generator uses `{nondeterministic}`, so its output is not reproducible"
+        );
+    }
+}
+
+#[test]
+fn the_scoop_job_publishes_only_from_a_finalized_release() {
+    let text = read(".github/workflows/publish.yaml");
+    let block = job_block(&text, "publish_scoop");
+
+    let needs = block
+        .lines()
+        .find(|line| line.trim_start().starts_with("needs:"))
+        .expect("publish_scoop declares needs");
+    for dependency in ["meta", "verify", "finalize_release"] {
+        assert!(
+            needs.contains(dependency),
+            "publish_scoop must depend on `{dependency}`: {needs}"
+        );
+    }
+
+    assert!(
+        block.contains("!contains(needs.meta.outputs.version, '-rc')"),
+        "a prerelease must not update the Scoop bucket"
+    );
+    assert!(
+        block.contains("      contents: read"),
+        "publish_scoop only reads its own release and pushes with a PAT"
+    );
+    assert!(
+        !block.contains("contents: write"),
+        "publish_scoop must not ask for write access to this repository"
+    );
+
+    assert!(
+        block.contains(r#"gh release download "$tag" -p "adrlint_${version}_checksums.txt""#),
+        "publish_scoop must download the published checksums file"
+    );
+    assert!(
+        block.contains(r#"./scripts/update-scoop-manifest.sh "$version" checksums.txt > adrlint.json"#),
+        "publish_scoop must generate the manifest with the script"
+    );
+    assert!(
+        block.contains("GIT_CONFIG_KEY_0=http.extraheader"),
+        "the bucket push must authenticate through an http.extraheader built from the environment"
+    );
+    assert!(
+        block.contains("GIT_CONFIG_VALUE_0="),
+        "the bucket push must pass the credential through GIT_CONFIG_VALUE_0"
+    );
+    assert!(
+        block.contains("bucket/adrlint.json"),
+        "publish_scoop must write bucket/adrlint.json"
+    );
+    assert!(
+        block.contains("if git diff --cached --quiet; then"),
+        "publish_scoop must only commit when the manifest changed"
+    );
+
+    for line in block.lines() {
+        if line.contains("Goldziher/scoop-bucket") {
+            assert!(
+                !line.contains("x-access-token"),
+                "the bucket clone must not embed the token in the clone URL: {line}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_scoop_script_is_executable() {
+    let path = repo_root().join("scripts/update-scoop-manifest.sh");
+    assert!(path.is_file(), "scripts/update-scoop-manifest.sh is missing");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(&path)
+            .unwrap_or_else(|error| panic!("could not stat {}: {error}", path.display()))
+            .permissions()
+            .mode();
+        assert_ne!(
+            mode & 0o111,
+            0,
+            "scripts/update-scoop-manifest.sh is not executable (mode {mode:o})"
+        );
+    }
+}
+
 /// Guard: the helpers above must actually find the constructs they assert about.
 #[test]
 fn the_text_parsers_find_the_constructs_they_assert_about() {
@@ -347,5 +657,11 @@ fn the_text_parsers_find_the_constructs_they_assert_about() {
     assert!(!run_blocks(&text).is_empty());
     assert!(uses_entries(&text).contains(&"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1".to_owned()));
     assert!(job_block(&text, "meta").contains("Validate the release tag"));
+    assert!(job_block(&text, "publish_scoop").contains("Update Scoop manifest"));
+    assert!(
+        platform_maps()
+            .iter()
+            .any(|(name, _)| name == "scripts/gh-action-resolve.sh")
+    );
     assert!(Path::new(&repo_root().join("action.yml")).is_file());
 }
