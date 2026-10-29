@@ -31,8 +31,9 @@ download.
 - `adrlint lint` runs rumdl over the same source and converts each diagnostic into an adrlint finding
   carrying rumdl's own `MD###` code, so users can suppress it with the code they already know. An
   enabled Markdown rule is an error by default; `[markdown.rules] <CODE> = "warn"` downgrades it.
-- `adrlint format` applies rumdl fixes and MADR fixes to one buffer. Formatting is idempotent: a
-  second run changes nothing.
+- `adrlint format` applies rumdl fixes to one buffer. Formatting is idempotent: a second run changes
+  nothing. A fix that changes the canonical content of a locked ADR is refused unless `--force` is
+  passed, so formatting cannot manufacture an `ADR50`.
 - Markdown findings are disabled wholesale with `[markdown].enabled = false`; individual rules are
   configured with `[markdown.rules]`.
 - Defaults are opinionated: MD013 (line length) is off because ADR prose is reflowed by authors, and
@@ -44,18 +45,21 @@ download.
 
 ### Diagnostic merging
 
-- Deduplicate on `(path, byte offset, code)`, then sort by path, offset and code.
-- A finding carries a stable rule code, severity, message, path, line, column and optional fix.
+- Sort by path, line, column and code. Rule families emit disjoint code sets, so a duplicate
+  `(path, line, code)` is a rule bug rather than something to hide by de-duplicating.
+- A finding carries a stable rule code, severity, message, path, line and column. MADR/ADR findings
+  use column 1 because the rule reports the construct's line; rumdl supplies its own column.
 - `lint` never writes. Fixes are applied only by `format`, after the full finding set is computed.
 - Never locate a construct by searching the rendered text. Regex over a node's text, once the parse
   has handed it over, is fine; finding structure by regex is not.
 
 ### Links
 
-External link checking is opt-in (`[lint].check_external_links = false` by default): it needs network
-access and makes a lint run non-deterministic. When enabled, requests run in parallel with a timeout
-and a stable result order. Local paths, root-relative paths and anchor links are always checked
-offline; anchors are matched against slugs generated from the parsed heading tree, not guessed.
+External link checking (`MADR11`) is not implemented in 0.1.0 and `[lint]` is rejected as an unknown
+table. It is opt-in by design: it needs network access and makes a lint run non-deterministic. Local
+paths, root-relative paths and anchor links are always checked offline; anchors are matched against
+slugs generated from the parsed heading tree, not guessed. A protocol-relative destination (`//host`)
+is external, never a root-relative path.
 
 ### Tests
 

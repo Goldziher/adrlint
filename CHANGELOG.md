@@ -26,8 +26,22 @@ All notable changes to this project are documented in this file.
 - `[rules]` severity overrides for MADR and ADR codes, matched by longest prefix, so a set such as
   `MADR03` covers every variant and an explicit `MADR03b` still wins.
 
+- A pinned ADR corpus (madrlint, adr-manager, log4brains) and a generated MADR matrix, with
+  corpus-wide tests for parsing, formatting idempotence, hash stability and truncated input.
+- `[rules]` and `[markdown.rules]` keys that match no implemented rule are reported once at startup.
+- Configuration layers merge per key: global file, ancestors outward, nearest project file last.
+
 ### Changed
 
+- `adrlint format` refuses a fix that changes a locked ADR's canonical content unless `--force` is
+  passed; formatting-only fixes are still written.
 - `adrlint init` writes the `[lock]` table and a stable starter configuration.
+- Writes are atomic and refuse symlinks; `adrlint new` rejects control characters and over-long
+  slugs, and `adrlint init` escapes its directory in the rendered TOML.
+- A non-UTF-8 or unreadable ADR is reported as `ADR52` and no longer aborts the run.
+- Release builds are gated on formatting, clippy, tests and `cargo deny`; every action is pinned to a
+  commit SHA and tag-derived values reach shell scripts only through `env`.
+- The npm and pip wrappers re-verify a cached binary and cap the download size; the Action extracts
+  only the expected binary.
 - `adrlint lock --check` is the strict CI form; `adrlint lock` lints first and refuses to freeze an
   invalid ADR.

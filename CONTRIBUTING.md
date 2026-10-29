@@ -51,6 +51,11 @@ A rule that needs a network call is `#[ignore]`d by default and gated behind con
 - `fixtures/adr/invalid/<rule-id>/` holds the smallest document that violates that rule.
 - The [`adr/madrlint`](https://github.com/adr/madrlint) `madr-samples/` corpus is the conformance
   baseline for ported structural rules.
+- `fixtures/corpus/` vendors real ADRs from madrlint, adr-manager and log4brains at pinned commits,
+  plus a generated matrix of MADR shapes. Do not edit the vendored files; refresh them with
+  `scripts/fetch-corpus.sh` and regenerate the synthetic tree with `scripts/generate-corpus.py`.
+- `tests/corpus.rs` runs parsing, formatting, hashing, truncation and CLI round trips over the whole
+  corpus. A new fixture is picked up automatically.
 
 ## Pre-commit hooks
 
@@ -96,6 +101,7 @@ Release candidates use `vX.Y.Z-rc.1` for Git and npm, and `X.Y.Zrc1` for PyPI.
 
 ### Publishing
 
-Pushing the tag triggers `.github/workflows/publish.yaml`, which builds the native archives, uploads
-them with `adrlint_<version>_checksums.txt`, promotes the release, then publishes to crates.io, npm,
-PyPI and the Homebrew tap.
+Pushing the tag triggers `.github/workflows/publish.yaml`. It validates the tag, runs formatting,
+clippy, tests and `cargo deny` on the tagged commit, builds the native archives, uploads them with
+`adrlint_<version>_checksums.txt`, promotes the release, then publishes to crates.io, npm, PyPI and
+the Homebrew tap. No artifact is published unless the verification job succeeds.

@@ -58,12 +58,13 @@ statuses = ["accepted", "rejected"]
 
 ### Rules of the wire format
 
-- Every `[global]` key is `Option<T>` on the file struct and its presence is recorded in
-  `SpecifiedFlags`. Layering needs "absent" to differ from "set to the default"; `#[serde(default)]`
-  on a `bool` collapses the two and silently erases the outer setting.
+- Each file deserializes into a private `Layer` whose scalar fields are `Option<T>`, so "absent"
+  differs from "set to the default". `Layer::apply_to` replaces only the keys a layer contains.
+  `[rules]` and `[markdown.rules]` fold key by key; `lock.statuses` replaces as a whole list.
 - Every config struct carries `#[serde(deny_unknown_fields)]`. A typo is an error, not a no-op.
-- Validate in `Config::validate`, not at use: reject unknown severity values, `start` outside `{0,1}`,
-  a `dir` that escapes the project root, and a lock path outside it.
+- Validate in `Config::validate` after the layers are folded, not at use: reject unknown severity
+  values, `start` outside `{0,1}`, a `dir` that escapes the project root, and a lock path outside it
+  (including a Windows drive or UNC prefix).
 - `[rules]` keys are matched longest-prefix: setting `MADR03` configures `MADR03a` and `MADR03b`,
   while an explicit `MADR03b` wins. `off` removes the finding entirely.
 - `adrlint init` writes the full template with comments, including every key. A key missing from the

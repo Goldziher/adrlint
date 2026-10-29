@@ -148,12 +148,17 @@ changed files still sees the whole directory.
 ### `adrlint format`
 
 ```text
-adrlint format [PATH]... [--check]
+adrlint format [PATH]... [--check] [--force]
 ```
 
 Resolves paths exactly like `lint`, then applies rumdl's fixes to each `.md` file. Only files that
 change are written, and each is printed. `--check` writes nothing and exits `1` when a file would
 change, which is the form to run in CI. Formatting is idempotent: a second run changes nothing.
+
+A rumdl fix that rewrites prose (MD034 wrapping a bare URL, for instance) changes the canonical
+content of a locked ADR. `format` refuses that fix, names the file and exits `1`; pass `--force` to
+write it and then `adrlint unlock` before re-locking. Formatting the canonical serializer ignores —
+markers, reflow, trailing spaces — is always written.
 
 ### `adrlint init`
 
@@ -270,8 +275,11 @@ HTML tables. `MD004` is pinned to `*`, matching `MADR31`, so `format` and `lint`
 
 ## Configuration
 
-`.adrlint.toml` is discovered from the current directory upward. The nearest file wins; the global
-file at `dirs::config_dir()/adrlint/config.toml` is the fallback.
+`.adrlint.toml` is discovered from the current directory upward and merged lowest-precedence first:
+the global file at `dirs::config_dir()/adrlint/config.toml`, then each project file from the
+outermost ancestor inward. Each layer sets only the keys it contains, and `[rules]` and
+`[markdown.rules]` merge key by key, so a nested file overrides one rule without discarding the
+rest.
 
 ```toml
 [adr]
@@ -335,9 +343,10 @@ blake3 = "…"
 - The hash is over a **semantic serialization**, not the bytes on disk. Formatting, line endings,
   list markers, fence styles and paragraph reflow do not change it; a changed word, heading, link
   target or code body does. A formatter fix that rewrites prose still needs an unlock.
-- `adrlint lock --check` is the strict CI form; `adrlint lint` reports stale locks as errors.
+- `adrlint lock --check` is the strict CI form and exits `1` when the manifest is out of date.
 - The `canonical` field versions that serializer, so a tool upgrade warns instead of failing every
-  consumer's build.
+  consumer's build. `lint` prints that warning once and verifies nothing until the manifest is
+  refreshed with `adrlint lock --all`.
 
 The manifest is committed. It is reviewed like source; `ADR50` and `ADR51` are the only findings a
 change to it can produce. `ADR52` is separate: it reports a file that cannot be read at all, and the

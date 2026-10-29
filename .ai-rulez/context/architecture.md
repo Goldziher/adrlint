@@ -28,31 +28,26 @@ The tool is opinionated in four ways:
 ### Source Code (`src/`)
 
 The 0.1.0 release implements every module in the layout below. `markdown/` links rumdl in-process;
-`adr/` owns the single parse; `rules/` is split by family (`structure`, `links`, `metadata`, `style`,
-`directory`); `lock.rs` owns the content hashing.
+`adr/` owns the single parse; `rules/` is split by family; `lock.rs` owns content hashing.
 
-- `main.rs` — entry point and process exit codes
+- `main.rs` — entry point, command dispatch, atomic writes and exit codes
 - `cli.rs` — clap command and flag definitions
-- `config/` — layered `.adrlint.toml` discovery and resolution
-  - `file.rs` — the deserialized shapes
-  - `manager.rs` — discovery, caching and per-file layering
-- `adr/` — the ADR domain
-  - `discovery.rs` — finding ADR files and reading their numeric prefix
-  - `document.rs` — the parsed document: front matter, headings, sections
-  - `front_matter.rs` — YAML front matter extraction
-  - `numbering.rs` — filename parsing and sequentiality
-- `markdown/` — the Markdown layer
-  - `parse.rs` — one pulldown-cmark parse per document, offsets retained
-  - `rumdl.rs` — adapting rumdl diagnostics and fixes into adrlint findings
-  - `format.rs` — applying formatting edits
-- `rules/` — the rule engine
-  - `mod.rs` — `Rule` trait, registry, severity resolution
-  - `madr/` — rules ported from madrlint (`MADR01`–`MADR44`)
-  - `adrlint/` — rules specific to adrlint (`ADR50`–`ADR51`)
-- `lock.rs` — `adrlint.lock` creation, verification and unlocking
+- `config.rs` — layered `.adrlint.toml` and global configuration, rendering and validation
+- `discovery.rs` — scanning an ADR directory, numeric prefixes and file-name validity
+- `adr/mod.rs` — the document model: front matter, headings, blocks, links, list items
+- `adr/parse.rs` — the single pulldown-cmark parse, byte offsets retained
+- `adr/front_matter.rs` — YAML front matter extraction, BOM handling and parser bounds
+- `markdown/mod.rs` — the Markdown layer facade
+- `markdown/rumdl.rs` — rumdl rule set, diagnostics and fixes adapted to adrlint findings
+- `rules.rs` — document and directory rule dispatch, severity overrides, code registry
+- `rules/structure.rs` — `MADR01`–`MADR08`
+- `rules/links.rs` — `MADR12` and slug generation
+- `rules/metadata.rs` — `MADR21`
+- `rules/style.rs` — `MADR31`
+- `lock.rs` — canonical content hashing, `adrlint.lock`, `ADR50`/`ADR51`
 - `diagnostics.rs` — finding model, severity and ordering
 - `report.rs` — text, JSON and GitHub annotations output
-- `ui.rs` — terminal colour and symbols
+- `template.rs` — the starter ADR and file-name slugs
 
 ### Distribution
 
@@ -66,9 +61,12 @@ The 0.1.0 release implements every module in the layout below. `markdown/` links
 
 - Unit tests are co-located in source files under `#[cfg(test)]`.
 - Integration tests live in `tests/`.
-- `fixtures/adr/` holds valid and invalid MADR corpora, including the samples from `adr/madrlint`
-  used as a conformance corpus for the ported rules.
-- `tests/integration_test/repos_cache/` is gitignored; network-dependent checks are `#[ignore]`d.
+- `fixtures/adr/` holds the valid and invalid MADR fixtures, one directory per rule code, plus the
+  `adr/madrlint` samples used as the conformance corpus for the ported rules.
+- `fixtures/corpus/` holds pinned real-world ADRs (madrlint, adr-manager, log4brains) and a generated
+  matrix of MADR shapes. `tests/corpus.rs` exercises parsing, formatting, hash stability, truncated
+  input and the CLI over the whole tree. Tests run offline; `scripts/fetch-corpus.sh` refreshes the
+  vendored trees at their pinned commits.
 
 ### Configuration Files
 
