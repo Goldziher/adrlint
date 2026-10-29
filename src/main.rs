@@ -194,6 +194,7 @@ fn apply_fixes(
     // and a file that cannot be read is reported and leaves every file untouched. A refused fix to a
     // locked ADR is reported and skipped; the other files are still written.
     let planned = parallel::map(&files, |file| plan_fix(loaded, &manifest, mode, &file.path))
+        .context("starting worker threads")?
         .into_iter()
         .collect::<Result<Vec<_>>>()?;
     let unreadable = planned.iter().any(|plan| matches!(plan, Planned::Unreadable(_)));
@@ -304,6 +305,7 @@ fn scan_all(directories: &[PathBuf]) -> Result<Vec<discovery::Directory>> {
     parallel::map(directories, |directory| {
         discovery::scan(directory).with_context(|| format!("reading ADR directory {}", directory.display()))
     })
+    .context("starting worker threads")?
     .into_iter()
     .collect()
 }
@@ -325,7 +327,7 @@ fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -
         .flat_map(|directory| directory.adrs.iter())
         .collect::<Vec<_>>();
     let mut documents = Vec::with_capacity(files.len());
-    for checked in parallel::map(&files, |file| check_file(loaded, &file.path)) {
+    for checked in parallel::map(&files, |file| check_file(loaded, &file.path)).context("starting worker threads")? {
         findings.extend(checked.findings);
         documents.extend(checked.document);
     }
