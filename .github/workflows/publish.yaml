@@ -526,6 +526,10 @@ jobs:
     needs: [meta, verify, finalize_release]
     if: needs.verify.result == 'success' && needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha')
     runs-on: ubuntu-latest
+    # Repository tag rules can reject a ref update made with the workflow token. The release and
+    # every package are already published at this point, so a protected tag must not fail the run;
+    # move it manually instead.
+    continue-on-error: true
     permissions:
       contents: write
     steps:
