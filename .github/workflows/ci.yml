@@ -18,7 +18,7 @@ env:
 
 jobs:
   validate:
-    uses: xberg-io/actions/.github/workflows/reusable-validate.yml@7bb3390acdfa67fe900d36d3eba1e2bca2032ef7 # v1.24.1
+    uses: xberg-io/actions/.github/workflows/reusable-validate.yml@793d3a4d37a17009d91cce29f2825eda570d2abd # v1.27.1
     permissions:
       contents: read
     with:
