@@ -9,7 +9,7 @@ branding:
 inputs:
   version:
     description: >-
-      adrlint version to install, with or without a leading `v` (e.g. "0.1.0"). Defaults to the tag
+      adrlint version to install, with or without a leading `v` (e.g. "0.2.1"). Defaults to the tag
       this action is pinned to (`github.action_ref`) — a full release or a floating major tag such as
       `v0`, which resolves to the newest 0.x release — otherwise the latest GitHub release.
     required: false
