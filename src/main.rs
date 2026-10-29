@@ -904,6 +904,14 @@ fn lock_command(config_path: Option<&Path>, args: LockArgs) -> Result<ExitCode> 
         if !args.all && !config::is_locked_status(&loaded.config.lock, &status) {
             continue;
         }
+        // A log reached through a symlink can resolve outside the project; its key could not be loaded.
+        if path.strip_prefix(&loaded.root).is_err() {
+            bail!(
+                "refusing to lock {}: it is outside the project root {}",
+                path.display(),
+                loaded.root.display()
+            );
+        }
         candidate.insert(lock::key(&loaded.root, path), lock::entry(document, number));
         locked += 1;
     }

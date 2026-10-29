@@ -178,3 +178,35 @@ fn should_reject_a_manifest_key_outside_the_project() {
     assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
     assert!(stderr(&output).contains("/etc/passwd"), "{}", stderr(&output));
 }
+
+#[cfg(unix)]
+#[test]
+fn should_refuse_to_lock_a_log_reached_through_a_symlink_outside_the_root() {
+    let outside = TempDir::new().expect("temporary directory");
+    fs::write(
+        outside.path().join("0001-record-architecture-decisions.md"),
+        include_str!("../fixtures/adr/valid/0001-record-architecture-decisions.md"),
+    )
+    .expect("writing the ADR");
+    let directory = TempDir::new().expect("temporary directory");
+    fs::write(directory.path().join(".adrlint.toml"), "[adr]\npaths = []\n").expect("writing the configuration");
+    std::os::unix::fs::symlink(outside.path(), directory.path().join("adrs")).expect("creating a symlink");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adrlint"))
+        .current_dir(directory.path())
+        .args(["lock", "adrs"])
+        .output()
+        .expect("running adrlint");
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("outside the project root"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!directory.path().join("adrlint.lock").exists());
+}
