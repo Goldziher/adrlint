@@ -80,8 +80,8 @@ ai-rulez generate --no-local
 
 ## Distribution and releases
 
-adrlint ships through crates.io, npm, PyPI, Homebrew and GitHub Releases. Versions must match across
-all surfaces.
+adrlint ships through crates.io, npm, PyPI, Homebrew, Scoop and GitHub Releases. Versions must match
+across all surfaces.
 
 ### Version bump checklist
 
@@ -105,5 +105,5 @@ Release candidates use `vX.Y.Z-rc.1` for Git and npm, and `X.Y.Zrc1` for PyPI.
 
 Pushing the tag triggers `.github/workflows/publish.yaml`. It validates the tag, runs formatting,
 clippy, tests and `cargo deny` on the tagged commit, builds the native archives, uploads them with
-`adrlint_<version>_checksums.txt`, promotes the release, then publishes to crates.io, npm, PyPI and
-the Homebrew tap. No artifact is published unless the verification job succeeds.
+`adrlint_<version>_checksums.txt`, promotes the release, then publishes to crates.io, npm, PyPI, the
+Homebrew tap and the Scoop bucket. No artifact is published unless the verification job succeeds.

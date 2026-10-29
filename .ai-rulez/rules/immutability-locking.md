@@ -30,8 +30,9 @@ blake3 = "…"
 - **Presence is opt-in.** No lock file means no enforcement. `adrlint lock` creates it.
 - **Entry-scoped.** `lint` verifies the entries that exist; an ADR added later is not a violation
   until it is locked.
-- **Default scope is `accepted` and `rejected`.** `adrlint lock` refuses to lock `proposed` unless
-  `--all` is passed. A draft is expected to change.
+- **Default scope is `[lock].statuses`: `accepted` and `rejected`.** `adrlint lock` silently skips
+  every other status, such as `proposed`, and errors only if nothing matched; `--all` includes every
+  status. A draft is expected to change.
 - **Keyed by path, carrying the ADR number.** A moved file is reported as a missing entry plus an
   unlocked file, not silently accepted as an edit.
 

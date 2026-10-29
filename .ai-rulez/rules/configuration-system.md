@@ -15,8 +15,8 @@ Layered TOML defined in `src/config.rs` and resolved by `config::load`.
 ### Precedence (highest to lowest)
 
 1. **CLI flags.**
-2. **Project config**, nearest to the ADR directory first, then each ancestor outward. A nested config
-   overrides only the keys it contains.
+2. **Project config**, found by walking up from the current directory: the nearest first, then each
+   ancestor outward. A nested config overrides only the keys it contains.
 3. **Global config** at `dirs::config_dir()/adrlint/config.toml`.
 4. **Built-in defaults.**
 
@@ -26,8 +26,9 @@ merged in.
 
 ### Shape
 
-The 0.2.1 release parses `[adr]`, `[lock]`, `[markdown]` and `[rules]`. A key from `[lint]` is an
-unknown-key error until external link checking lands, rather than a silent no-op.
+The 0.3.0 release parses `[adr]`, `[lint]`, `[lock]`, `[markdown]` and `[rules]`. `[lint]` has one
+key, `check_external_links`, which opts in to external link checking (`MADR11`);
+`adrlint lint --check-external-links` does the same for one run.
 
 ```toml
 [adr]
@@ -36,10 +37,10 @@ dir = "docs/adr"
 paths = ["adrs/*", "product/adrs/*"]
 start = 1 # 0 or 1, fixed for the life of the directory
 allow_gaps = false
+recursive = false # search the roots for nested ADR logs, as --recursive does
 
 [lint]
 check_external_links = false
-severity = "error" # default for findings without an override
 
 [markdown]
 enabled = true
@@ -64,7 +65,7 @@ statuses = ["accepted", "rejected"]
   differs from "set to the default". `Layer::apply_to` replaces only the keys a layer contains.
   `[rules]` and `[markdown.rules]` fold key by key; `lock.statuses` replaces as a whole list.
 - Every config struct carries `#[serde(deny_unknown_fields)]`. A typo is an error, not a no-op.
-- Validate in `Config::validate` after the layers are folded, not at use: reject unknown severity
+- Validate in `config::validate` after the layers are folded, not at use: reject unknown severity
   values, `start` outside `{0,1}`, a `dir` that escapes the project root, and a lock path outside it
   (including a Windows drive or UNC prefix).
 - `[rules]` keys are matched longest-prefix: setting `MADR03` configures `MADR03a` and `MADR03b`,

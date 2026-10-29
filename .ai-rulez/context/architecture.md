@@ -12,7 +12,7 @@ x-ai-rulez:
 
 adrlint is a Rust CLI linter and formatter for Architecture Decision Records written in Markdown
 following the [MADR](https://github.com/adr/madr) specification. It is distributed through crates.io,
-npm, PyPI and Homebrew, using the same binary-wrapper pattern as the other Goldziher Rust CLIs.
+npm, PyPI, Homebrew and Scoop, using the same binary-wrapper pattern as the other Goldziher Rust CLIs.
 
 The tool is opinionated in four ways:
 
@@ -27,7 +27,7 @@ The tool is opinionated in four ways:
 
 ### Source Code (`src/`)
 
-The 0.2.1 release implements every module in the layout below. `markdown/` links rumdl in-process;
+The 0.3.0 release implements every module in the layout below. `markdown/` links rumdl in-process;
 `adr/` owns the single parse; `rules/` is split by family; `lock.rs` owns content hashing.
 
 - `main.rs` — entry point, command dispatch, atomic writes and exit codes
@@ -45,6 +45,8 @@ The 0.2.1 release implements every module in the layout below. `markdown/` links
 - `rules/metadata.rs` — `MADR21`
 - `rules/style.rs` — `MADR31`
 - `lock.rs` — canonical content hashing, `adrlint.lock`, `ADR50`/`ADR51`
+- `fix.rs` — structural fixes applied by `lint --fix`
+- `parallel.rs` — deterministic parallel map
 - `diagnostics.rs` — finding model, severity and ordering
 - `report.rs` — text, JSON and GitHub annotations output
 - `template.rs` — the starter ADR and file-name slugs
@@ -55,14 +57,16 @@ The 0.2.1 release implements every module in the layout below. `markdown/` links
 - `pip-package/` — PyPI wrapper (`adrlint`) with the same binary-download strategy
 - `.github/workflows/publish.yaml` — native per-platform release build matrix
 - `scripts/update-homebrew-formula.sh` — regenerates the Homebrew formula from release checksums
+- `scripts/update-scoop-manifest.sh` — regenerates the Scoop manifest (`Goldziher/scoop-bucket`)
 - Root `action.yml` — composite GitHub Action that installs and runs `adrlint lint`
 
 ### Testing
 
 - Unit tests are co-located in source files under `#[cfg(test)]`.
 - Integration tests live in `tests/`.
-- `fixtures/adr/` holds the valid and invalid MADR fixtures, one directory per rule code, plus the
-  `adr/madrlint` samples used as the conformance corpus for the ported rules.
+- `fixtures/adr/` holds the valid and invalid MADR fixtures, one directory per rule code. The
+  madrlint samples used as the conformance corpus for the ported rules are in
+  `fixtures/corpus/madrlint`.
 - `fixtures/corpus/` holds pinned real-world ADRs (madrlint, adr-manager, log4brains) and a generated
   matrix of MADR shapes. `tests/corpus.rs` exercises parsing, formatting, hash stability, truncated
   input and the CLI over the whole tree. Tests run offline; `scripts/fetch-corpus.sh` refreshes the

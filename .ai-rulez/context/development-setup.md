@@ -50,13 +50,6 @@ poly lint .
 poly fmt --check .
 ```
 
-### Benchmarks and profiling
-
-```bash
-cargo bench
-cargo run --release --features bench-tools --bin profile -- fixtures/adr
-```
-
 ### Task runner
 
 ```bash

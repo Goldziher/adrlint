@@ -52,7 +52,7 @@ once it reaches `accepted`.
 
 ### Rules
 
-- `MADR41a` — smallest number is neither `0000` nor the configured base.
+- `MADR41a` — smallest number is not the configured `[adr].start`.
 - `MADR41b` — a number between two existing ADRs is missing.
 - `MADR42` — a non-ADR file is present in the ADR directory.
 - `MADR43` — two or more files share a number.
