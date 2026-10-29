@@ -55,6 +55,9 @@ All notable changes to this project are documented in this file.
 - A path that exists is read literally even if it holds `[`, and GitHub annotations escape `:` and `,`
   in file names. Text and GitHub spans end at the end of the line's content.
 - `lint --fix` exits 1 when it refused to change a locked ADR.
+- Text output replaces control characters in the quoted source line, the message, the help and
+  the path with U+FFFD, so an escape sequence or carriage return in an ADR cannot rewrite the
+  terminal or forge a CI log line.
 - Worker threads get a 16 MiB stack, so a deeply nested ADR cannot overflow one. A single file on a
   single core runs on a worker too, and a thread that cannot be started is an error, not a panic.
 - `lock` refuses an ADR that resolves outside the project root (a log reached through a symlink)

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
@@ -120,12 +121,12 @@ fn print_text(writer: &mut impl Write, diagnostics: &[Diagnostic], color: bool) 
         writeln!(
             writer,
             "{}:{}:{}: {} {} {}",
-            diagnostic.path.display(),
+            printable(&diagnostic.path.display().to_string()),
             diagnostic.line,
             diagnostic.column,
             severity,
             code,
-            diagnostic.message
+            printable(&diagnostic.message)
         )?;
 
         let number = diagnostic.line.to_string();
@@ -135,7 +136,7 @@ fn print_text(writer: &mut impl Write, diagnostics: &[Diagnostic], color: bool) 
             && let Some(text) = sources.line(diagnostic)
             && text.chars().count() <= MAX_SNIPPET_CHARS
         {
-            let shown = text.replace('\t', " ");
+            let shown = printable(&text.replace('\t', " ")).into_owned();
             let width = text.chars().count();
             let start = diagnostic.column.max(1);
             let end = match (diagnostic.end_line, diagnostic.end_column) {
@@ -155,10 +156,27 @@ fn print_text(writer: &mut impl Write, diagnostics: &[Diagnostic], color: bool) 
         }
         if let Some(help) = &diagnostic.help {
             let lead = if annotated { pad.as_str() } else { " " };
-            writeln!(writer, "{lead} = help: {help}")?;
+            writeln!(writer, "{lead} = help: {}", printable(help))?;
         }
     }
     Ok(())
+}
+
+/// `text` with every control character replaced by U+FFFD, one character for one so a caret
+/// under the line still lines up.
+///
+/// ADR text is untrusted: an escape sequence or a carriage return echoed to a terminal or a CI log
+/// could clear the screen or forge a line of output.
+fn printable(text: &str) -> Cow<'_, str> {
+    if text.chars().any(char::is_control) {
+        Cow::Owned(
+            text.chars()
+                .map(|character| if character.is_control() { '\u{fffd}' } else { character })
+                .collect(),
+        )
+    } else {
+        Cow::Borrowed(text)
+    }
 }
 
 fn print_json(writer: &mut impl Write, diagnostics: &[Diagnostic]) -> io::Result<()> {
@@ -304,6 +322,28 @@ mod tests {
         let text = String::from_utf8(output).unwrap();
         let tail = text.split_once('\n').unwrap().1;
         assert_eq!(tail, "  |\n3 | - item\n  | ^\n  = help: use `*`\n");
+    }
+
+    #[test]
+    fn should_not_echo_terminal_control_characters() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("0001-x.md");
+        std::fs::write(&path, "- item \u{1b}[2J\rforged\u{7}\n").unwrap();
+        let finding = Diagnostic::error("MADR31", &path, 1, "heading '\u{1b}]0;x\u{7}'").with_span(1, 1, 2);
+        let mut output = Vec::new();
+        print_text(&mut output, &[finding], false).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(
+            !text
+                .chars()
+                .any(|character| character.is_control() && character != '\n'),
+            "{text:?}"
+        );
+        assert!(
+            text.contains("1 | - item \u{fffd}[2J\u{fffd}forged\u{fffd}\n"),
+            "{text:?}"
+        );
+        assert!(text.contains("heading '\u{fffd}]0;x\u{fffd}'"), "{text:?}");
     }
 
     #[test]
