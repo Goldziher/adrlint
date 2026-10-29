@@ -673,3 +673,21 @@ fn should_report_a_configured_recursive_root_without_any_log() {
     assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
     assert!(stderr(&output).contains("no ADR log found"), "{}", stderr(&output));
 }
+
+#[test]
+fn should_expand_a_configured_glob_under_a_root_with_brackets() {
+    let outer = TempDir::new().expect("temporary directory");
+    let root = outer.path().join("[client] repo");
+    fs::create_dir_all(&root).expect("creating the project");
+    fs::write(root.join(".adrlint.toml"), "[adr]\npaths = [\"adrs/*\"]\n").expect("writing the configuration");
+    write_adr(&root, "adrs/team-a/0001-a.md");
+    write_adr(&root, "adrs/team-b/0001-b.md");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adrlint"))
+        .current_dir(&root)
+        .args(["--no-color", "lint"])
+        .output()
+        .expect("running adrlint");
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(stderr(&output).contains("2 files checked"), "{}", stderr(&output));
+}

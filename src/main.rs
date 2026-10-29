@@ -493,19 +493,44 @@ fn resolve_directories(paths: &[PathBuf], loaded: &config::Loaded, recursive: bo
 
 /// One source as the user wrote it, plus the absolute form to read.
 ///
-/// The pattern flag belongs to the written form: a project root that itself contains `[` must not
-/// turn a literal configured path into a pattern.
+/// The pattern belongs to the written form: a project root that itself contains `[` must not turn a
+/// literal configured path into a pattern, nor break a configured pattern joined onto it.
 struct Source {
     path: PathBuf,
-    pattern: bool,
+    /// The glob to expand, with any root it was joined onto escaped; `None` for a literal path.
+    pattern: Option<String>,
 }
 
 impl Source {
-    fn new(path: PathBuf, written: &Path) -> Self {
+    /// A path the user wrote, relative to the working directory.
+    fn written(path: PathBuf) -> Self {
         // A path that exists is literal even if it contains `[`, as a staged `adrs/[draft]/0001-x.md` does.
-        let pattern = is_glob(written) && !path.exists();
+        let pattern = (is_glob(&path) && !path.exists()).then(|| path.to_string_lossy().into_owned());
         Self { path, pattern }
     }
+
+    /// A configured path, relative to the project root.
+    fn configured(root: &Path, written: &Path) -> Self {
+        let path = root.join(written);
+        let pattern = (is_glob(written) && !path.exists())
+            .then(|| escape_glob_root(root).join(written).to_string_lossy().into_owned());
+        Self { path, pattern }
+    }
+}
+
+/// `root` with every normal component escaped for `glob`, so `/tmp/[client] repo` matches itself.
+///
+/// The prefix and root components are kept verbatim: escaping the `?` of a canonical Windows
+/// `\\?\C:\` prefix would turn it into a pattern.
+fn escape_glob_root(root: &Path) -> PathBuf {
+    root.components()
+        .map(|component| match component {
+            std::path::Component::Normal(name) => {
+                std::ffi::OsString::from(glob::Pattern::escape(&name.to_string_lossy()))
+            }
+            other => other.as_os_str().to_owned(),
+        })
+        .collect()
 }
 
 /// The sources to resolve, highest precedence first: CLI paths, then `[adr].paths`, then `[adr].dir`,
@@ -518,7 +543,7 @@ impl Source {
 /// directories, not walked again. A `dir` a configuration names must exist.
 fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<(Vec<Source>, Option<Vec<PathBuf>>)> {
     if !paths.is_empty() {
-        return Ok((paths.iter().map(|path| Source::new(path.clone(), path)).collect(), None));
+        return Ok((paths.iter().map(|path| Source::written(path.clone())).collect(), None));
     }
     if !loaded.config.adr.paths.is_empty() {
         let sources = loaded
@@ -526,13 +551,13 @@ fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<(Vec<Source>, Opt
             .adr
             .paths
             .iter()
-            .map(|path| Source::new(loaded.root.join(path), path))
+            .map(|path| Source::configured(&loaded.root, path))
             .collect();
         return Ok((sources, None));
     }
     let directory = loaded.root.join(&loaded.config.adr.dir);
     if directory.is_dir() {
-        return Ok((vec![Source::new(directory, &loaded.config.adr.dir)], None));
+        return Ok((vec![Source::configured(&loaded.root, &loaded.config.adr.dir)], None));
     }
     if loaded.config.adr.dir_configured {
         bail!(
@@ -556,10 +581,9 @@ fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<(Vec<Source>, Opt
 /// matching file contributes its parent directory and a matching directory becomes a root. A pattern
 /// that is invalid or that matches nothing is an error: silently linting nothing would look green.
 fn expand_source(source: &Source) -> Result<Vec<PathBuf>> {
-    if source.pattern {
-        let pattern = source.path.to_string_lossy().into_owned();
+    if let Some(pattern) = &source.pattern {
         let matches =
-            glob::glob(&pattern).map_err(|error| anyhow::anyhow!("invalid glob pattern {pattern}: {error}"))?;
+            glob::glob(pattern).map_err(|error| anyhow::anyhow!("invalid glob pattern {pattern}: {error}"))?;
         let mut directories = Vec::new();
         let mut matched = false;
         for entry in matches {
@@ -1000,6 +1024,13 @@ mod tests {
         let finding = read_adr(&path).unwrap_err();
         assert_eq!(finding.code, "ADR52");
         assert!(finding.message.contains("byte limit"), "{}", finding.message);
+    }
+
+    #[test]
+    fn should_escape_glob_metacharacters_in_a_root() {
+        let root = Path::new("/tmp/[client] repo");
+        let pattern = escape_glob_root(root).join("adrs/*");
+        assert_eq!(pattern, Path::new("/tmp/[[]client[]] repo/adrs/*"));
     }
 
     #[test]
