@@ -42,13 +42,15 @@ adrlint is at **0.2.1** and under active construction. The implemented surface i
 - `adrlint lint` — `MADR01`–`MADR08` structural rules, `MADR12`/`MADR21`/`MADR31` integrity and
   style rules, `MADR41`–`MADR44` directory rules, `ADR50`–`ADR52` immutability and readability
   checks, and rumdl's `MD###` Markdown rules
-- `adrlint format` — rumdl's fixes, with `--check` for CI
+- `adrlint format` — rumdl's fixes, with `--check` for CI; `adrlint lint --fix` adds the safe MADR
+  structural fixes and lints again
 - `adrlint init` — writes `.adrlint.toml` and a starter ADR
 - `adrlint new "<title>"` — creates the next sequential ADR
 - `adrlint lock` / `adrlint unlock` — the content-hash immutability manifest
 
 External link checking (`MADR11`) is the remaining MADR rule; it is opt-in because it needs network
-access. The rule IDs and configuration keys are stable from the first release; nothing in this
+access, and it is not implemented yet: `[lint].check_external_links = true` is rejected with a clear
+error rather than ignored. The rule IDs and configuration keys are stable from the first release; nothing in this
 README is a placeholder name.
 
 ## Features
@@ -142,7 +144,7 @@ Options:
 ### `adrlint lint`
 
 ```text
-adrlint lint [PATH]... [--recursive] [--format text|json|github]
+adrlint lint [PATH]... [--recursive] [--format text|json|github] [--fix [--force]]
 ```
 
 Every command accepts files, directories and glob patterns. A file is checked together with its
@@ -161,11 +163,48 @@ excludes. A date-prefixed document (`2026-07-01-design.md`) is not an ADR and do
 directory a log. Numbering is still checked per ADR directory, so
 `adrs/team-a/0001.md` and `adrs/team-b/0001.md` are independent logs.
 
+Each root is walked once per invocation: overlapping roots (`adrs` and `adrs/team-a`) are merged,
+discovery hands the directories it found to the linter instead of walking again, and a directory or
+file the walk cannot read is reported on stderr and skipped rather than aborting the run. Directories
+are listed and files are checked in parallel on every core, each file is read once, and results are
+merged in a fixed order, so the output is byte-identical from run to run.
+
 ```bash
 adrlint lint adrs/team-a/0002-use-postgresql.md   # that file, with its directory
 adrlint lint 'adrs/*'                             # both namespaces
 adrlint lint --recursive adrs product/adrs        # every nested namespace
 ```
+
+#### Diagnostics
+
+Every finding has a stable code, a severity, a path, and a 1-based line and column (columns count
+characters). Where the rule knows the extent, it also has an end line and an exclusive end column,
+and a short `help` saying what to change. Text output quotes the offending line and underlines it:
+
+```text
+docs/adr/0001-x.md:19:1: error [MADR07a] Consequences must be a level 3 heading under Decision Outcome
+   |
+19 | ## Consequences
+   | ^^^^^^^^^^^^^^^
+   = help: make it a `###` heading inside `## Decision Outcome`
+```
+
+A closing line on stderr counts the run: `adrlint: 2 errors, 0 warnings in 14 files checked (2 fixable
+with `adrlint lint --fix`)`. `--format json` keeps `code`, `severity`, `message`, `path`, `line` and
+`column`, and adds `fixable` plus `end_line`, `end_column` and `help` when known. `--format github`
+adds `endLine` and `endColumn` to each annotation. JSON and GitHub output carry no summary, so they
+stay machine-readable.
+
+#### `--fix`
+
+`adrlint lint --fix` applies the safe, deterministic fixes and then lints again, so the report and
+the exit code describe what is left. The fixes are everything `format` applies (rumdl's fixes,
+including the `*` list marker of `MADR31`, trailing whitespace and blank lines) plus the heading
+level of `Consequences` and `Confirmation` when a `##` heading directly follows `## Decision Outcome`
+and is one level too shallow (`MADR06`/`MADR07`). It never renames or renumbers a file and never
+touches decision text. Fixable findings are marked `fixable` in JSON and counted in the summary.
+Like `format`, it refuses a fix that changes the canonical content of a locked ADR unless `--force`
+is passed. Files it rewrote are listed on stderr as `fixed <path>`.
 
 ### `adrlint format`
 
@@ -341,12 +380,14 @@ ones turn `MD013` and `MD033` off.
 case, and the longest key wins: `MADR03 = "warn"` covers `MADR03a` and `MADR03b`, while an explicit
 `MADR03b = "off"` removes only that variant.
 
-The `[lint]` table lands with external link checking:
+The `[lint]` table holds opt-in checks that need more than the ADR files:
 
 ```toml
 [lint]
 check_external_links = false
 ```
+
+`check_external_links = true` is reserved for `MADR11` and is rejected until the rule exists.
 
 Unknown keys are errors, not silently ignored.
 
@@ -458,7 +499,19 @@ registers a problem matcher so findings appear inline on the diff.
 4. **Merge** findings, deduplicate, sort, and report as text, JSON or GitHub annotations.
 5. **Lock** by hashing a deterministic serialization of the document's content.
 
-`lint` never writes. Fixes belong to `format`, and only `lock`/`unlock` touch the manifest.
+Steps 1 to 3 run in parallel across directories and files. `lint` writes nothing unless you pass
+`--fix`; `format` writes fixes, and only `lock`/`unlock` touch the manifest.
+
+### Large repositories
+
+Hardening for monorepos: logs are found at any depth (`services/x/adrs/area/sub/`); `adrs/README.md`
+indexes, ADR templates and dated design documents (`docs/specs/2026-07-01-x.md`) are not logs;
+`.gitignore`d build output, hidden directories and `node_modules` are never entered; symlinks are not
+followed, so a loop cannot hang a walk; an unreadable file is an `ADR52` finding and an unreadable
+directory a warning; a non-UTF-8 file is an `ADR52` finding; an ADR over 16 MiB is reported instead
+of parsed; CRLF files lint and lock like LF files. `adrlint.lock` keys are project-root-relative paths
+with forward slashes, `lock` finds the same logs as `lint`, and `lock --check` verifies every nested
+log.
 
 ## Roadmap
 
@@ -469,7 +522,8 @@ registers a problem matcher so findings appear inline on the diff.
 - [x] `adrlint lock` / `unlock` with semantic hashing
 - [x] rumdl diagnostics and `adrlint format`
 - [ ] External link checking (`MADR11`, opt-in)
-- [ ] `[lint]` external-link configuration
+- [x] `[lint]` table (external link checking itself is still to come)
+- [x] Parallel linting, `--fix`, spans and hints in diagnostics
 - [ ] 1.0 release
 
 ## Library

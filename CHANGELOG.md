@@ -12,9 +12,27 @@ All notable changes to this project are documented in this file.
   an error, and finding no log at all is reported.
 - `[adr].recursive`, so configured roots are searched for nested logs without passing `--recursive`.
 - A Lefthook example in the README.
+- `adrlint lint --fix` (with `--force`): applies rumdl's fixes plus the unambiguous MADR heading-level
+  fix for `Consequences` and `Confirmation`, respects the immutability lock like `format`, then lints
+  again and reports what remains.
+- Richer diagnostics: end positions, a short `help` hint and a `fixable` flag on findings, a quoted
+  source line with an underline in text output, `endLine`/`endColumn` in GitHub annotations, and
+  `end_line`, `end_column`, `help` and `fixable` in JSON (all existing fields are unchanged).
+- A closing summary line on stderr in text mode: errors, warnings, files checked and fixable count.
+- The `[lint]` table with `check_external_links`; `true` is rejected with a clear error until `MADR11`
+  is implemented.
+- Hardening tests with synthetic monorepos: nested logs at several depths, ignored build output,
+  symlink loops, unreadable and non-UTF-8 files, very large ADRs, CRLF, front matter edge cases and
+  thousands of directories.
 
 ### Changed
 
+- Directories are listed and ADRs checked in parallel, each file is read once and the Markdown rule
+  set is built once per worker thread; output is sorted and exact duplicates are dropped, so it is
+  byte-identical across runs.
+- Discovery walks once: the directories found for zero-config runs are reused, and overlapping
+  recursive roots are merged. A path the walk cannot read is a stderr warning instead of an abort.
+- An ADR larger than 16 MiB is reported as `ADR52` instead of being parsed.
 - Discovery walks the project in parallel and honours `.gitignore` (plus hidden directories,
   `target` and `node_modules`), so a monorepo root takes about two seconds instead of ten.
 
