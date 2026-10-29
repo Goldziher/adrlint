@@ -201,3 +201,30 @@ fn should_replace_the_lock_statuses_as_a_whole() {
 
     assert_eq!(loaded.config.lock.statuses, vec!["proposed".to_owned()]);
 }
+
+#[test]
+fn should_replace_the_adr_paths_as_a_whole_across_layers() {
+    let workspace = TempDir::new().expect("temporary directory");
+    let root = workspace.path().join("project");
+    let leaf = root.join("nested");
+    write(
+        &root.join(".adrlint.toml"),
+        "[adr]\npaths = [\"adrs/*\", \"product/adrs/*\"]\n",
+    );
+    write(&leaf.join(".adrlint.toml"), "[adr]\npaths = [\"adrs/team-a\"]\n");
+    let global = global_path(&workspace);
+
+    let _cwd = InDir::new(&leaf);
+    let loaded = config::load_with_global(None, Some(&global)).expect("loading the configuration");
+
+    assert_eq!(
+        loaded.config.adr.paths,
+        vec![PathBuf::from("adrs/team-a")],
+        "the nearest layer replaces the list instead of folding into it"
+    );
+    assert_eq!(
+        loaded.config.adr.dir,
+        Path::new("docs/adr"),
+        "a layer that sets only paths leaves dir at its default"
+    );
+}

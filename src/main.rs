@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
+use walkdir::{DirEntry, WalkDir};
 
 use adrlint::adr::{self, Document};
 use adrlint::cli::{Cli, Command, FormatArgs, InitArgs, LintArgs, LockArgs, NewArgs, UnlockArgs};
@@ -48,7 +49,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
 fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitCode> {
     let loaded = config::load(config_path)?;
     report_unknown_rule_keys(&loaded);
-    let (findings, _, stale) = collect(&loaded, &args.paths, true)?;
+    let (findings, _, stale) = collect(&loaded, &args.paths, args.recursive, true)?;
     if let Some(canonical) = stale {
         report_stale_lock(&lock_path(&loaded), canonical);
     }
@@ -76,7 +77,7 @@ fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCo
     } else {
         LockFile::default()
     };
-    let directories = resolve_directories(&args.paths, &loaded)?;
+    let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
     let mut changed = Vec::new();
     let mut refused = Vec::new();
     let mut failed = false;
@@ -146,8 +147,8 @@ type LintResult = (Vec<diagnostics::Diagnostic>, Vec<(PathBuf, Document)>, Optio
 
 /// Lints every ADR reachable from `paths`, returning the findings, the parsed documents and the
 /// stale canonical version when the manifest belongs to another serializer version.
-fn collect(loaded: &config::Loaded, paths: &[PathBuf], check_lock: bool) -> Result<LintResult> {
-    let directories = resolve_directories(paths, loaded)?;
+fn collect(loaded: &config::Loaded, paths: &[PathBuf], recursive: bool, check_lock: bool) -> Result<LintResult> {
+    let directories = resolve_directories(paths, loaded, recursive)?;
     let mut findings = Vec::new();
     let mut documents = Vec::new();
     let mut stale = None;
@@ -224,33 +225,150 @@ fn lock_path(loaded: &config::Loaded) -> PathBuf {
     loaded.root.join(&loaded.config.lock.path)
 }
 
-fn resolve_directories(paths: &[PathBuf], loaded: &config::Loaded) -> Result<Vec<PathBuf>> {
-    if paths.is_empty() {
-        let directory = loaded.root.join(&loaded.config.adr.dir);
-        if !directory.is_dir() {
-            bail!(
-                "ADR directory {} does not exist; run `adrlint init` first",
-                directory.display()
-            );
-        }
-        return Ok(vec![directory]);
-    }
-
+fn resolve_directories(paths: &[PathBuf], loaded: &config::Loaded, recursive: bool) -> Result<Vec<PathBuf>> {
     let mut directories = BTreeSet::new();
-    for path in paths {
-        let metadata = fs::metadata(path).with_context(|| format!("reading path {}", path.display()))?;
-        let directory = if metadata.is_dir() {
-            path.clone()
-        } else {
-            path.parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-                .unwrap_or_else(|| Path::new("."))
-                .to_path_buf()
-        };
-        let directory = fs::canonicalize(&directory).with_context(|| format!("resolving {}", directory.display()))?;
-        directories.insert(directory);
+    for source in roots(paths, loaded)? {
+        for root in expand_source(&source)? {
+            if recursive {
+                directories.extend(descend(&root)?);
+            } else {
+                directories.insert(root);
+            }
+        }
     }
     Ok(directories.into_iter().collect())
+}
+
+/// One source as the user wrote it, plus the absolute form to read.
+///
+/// The pattern flag belongs to the written form: a project root that itself contains `[` must not
+/// turn a literal configured path into a pattern.
+struct Source {
+    path: PathBuf,
+    pattern: bool,
+}
+
+impl Source {
+    fn new(path: PathBuf, written: &Path) -> Self {
+        let pattern = is_glob(written);
+        Self { path, pattern }
+    }
+}
+
+/// The sources to resolve, highest precedence first: CLI paths, then `[adr].paths`, then `[adr].dir`.
+///
+/// CLI paths are interpreted relative to the working directory; configured paths are relative to the
+/// project root, so they are joined here rather than by the caller.
+fn roots(paths: &[PathBuf], loaded: &config::Loaded) -> Result<Vec<Source>> {
+    if !paths.is_empty() {
+        return Ok(paths.iter().map(|path| Source::new(path.clone(), path)).collect());
+    }
+    if !loaded.config.adr.paths.is_empty() {
+        return Ok(loaded
+            .config
+            .adr
+            .paths
+            .iter()
+            .map(|path| Source::new(loaded.root.join(path), path))
+            .collect());
+    }
+    let directory = loaded.root.join(&loaded.config.adr.dir);
+    if !directory.is_dir() {
+        bail!(
+            "ADR directory {} does not exist; run `adrlint init` first",
+            directory.display()
+        );
+    }
+    Ok(vec![Source::new(directory, &loaded.config.adr.dir)])
+}
+
+/// Expands one source into ADR directories.
+///
+/// A source with glob metacharacters is expanded; every match is classified like a literal path, so a
+/// matching file contributes its parent directory and a matching directory becomes a root. A pattern
+/// that is invalid or that matches nothing is an error: silently linting nothing would look green.
+fn expand_source(source: &Source) -> Result<Vec<PathBuf>> {
+    if source.pattern {
+        let pattern = source.path.to_string_lossy().into_owned();
+        let matches =
+            glob::glob(&pattern).map_err(|error| anyhow::anyhow!("invalid glob pattern {pattern}: {error}"))?;
+        let mut directories = Vec::new();
+        for entry in matches {
+            let path = entry.with_context(|| format!("reading glob match of {pattern}"))?;
+            directories.push(classify(&path)?);
+        }
+        if directories.is_empty() {
+            bail!("nothing matched {pattern}");
+        }
+        return Ok(directories);
+    }
+    Ok(vec![classify(&source.path)?])
+}
+
+fn is_glob(path: &Path) -> bool {
+    path.to_string_lossy()
+        .chars()
+        .any(|character| matches!(character, '*' | '?' | '['))
+}
+
+/// The ADR directory a path belongs to: itself when it is a directory, its parent when it is a file.
+///
+/// A file is always linted with its directory, so a gap or duplicate next to it is still reported.
+fn classify(path: &Path) -> Result<PathBuf> {
+    let metadata = fs::metadata(path).with_context(|| format!("reading path {}", path.display()))?;
+    let directory = if metadata.is_dir() {
+        path.to_path_buf()
+    } else {
+        path.parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf()
+    };
+    fs::canonicalize(&directory).with_context(|| format!("resolving {}", directory.display()))
+}
+
+/// Directories `--recursive` never descends into.
+const SKIPPED_DIRECTORIES: [&str; 3] = [".git", "target", "node_modules"];
+
+/// A root plus every descendant directory that directly contains at least one `.md` file.
+///
+/// The root is always kept, even when it holds no ADR files: naming a directory explicitly means it
+/// is scanned, and an empty directory legitimately has no findings. Symlinks are not followed.
+fn descend(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut directories = vec![root.to_path_buf()];
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| !is_skipped(entry))
+    {
+        let entry = entry.with_context(|| format!("walking {}", root.display()))?;
+        if entry.depth() == 0 || !entry.file_type().is_dir() {
+            continue;
+        }
+        if contains_markdown(entry.path())? {
+            directories.push(entry.path().to_path_buf());
+        }
+    }
+    Ok(directories)
+}
+
+fn is_skipped(entry: &DirEntry) -> bool {
+    if entry.depth() == 0 {
+        return false;
+    }
+    let name = entry.file_name().to_string_lossy();
+    name.starts_with('.') || SKIPPED_DIRECTORIES.contains(&name.as_ref())
+}
+
+fn contains_markdown(directory: &Path) -> Result<bool> {
+    for entry in fs::read_dir(directory).with_context(|| format!("reading {}", directory.display()))? {
+        let entry = entry.with_context(|| format!("reading {}", directory.display()))?;
+        let is_file = entry.file_type().is_ok_and(|file_type| !file_type.is_dir());
+        if is_file && entry.file_name().to_string_lossy().ends_with(".md") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn init(config_path: Option<&Path>, args: InitArgs) -> Result<ExitCode> {
@@ -355,7 +473,7 @@ fn lock_command(config_path: Option<&Path>, args: LockArgs) -> Result<ExitCode> 
         bail!("locking is disabled in the configuration; set lock.enabled = true to use it");
     }
 
-    let (findings, documents, stale) = collect(&loaded, &args.paths, true)?;
+    let (findings, documents, stale) = collect(&loaded, &args.paths, args.recursive, true)?;
     if diagnostics::has_errors(&findings) {
         report::print(&findings, OutputFormat::Text, true)?;
         if args.check {

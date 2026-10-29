@@ -63,6 +63,12 @@ pub fn is_locked_status(config: &LockConfig, status: &str) -> bool {
 pub struct AdrConfig {
     #[serde(default = "default_dir")]
     pub dir: PathBuf,
+    /// Additional roots, each a directory or a glob pattern relative to the project root.
+    ///
+    /// When non-empty this replaces `dir` as the set of roots. It is a whole list: a layer that
+    /// sets it replaces the list below rather than folding into it.
+    #[serde(default)]
+    pub paths: Vec<PathBuf>,
     #[serde(default = "default_start")]
     pub start: u32,
     #[serde(default)]
@@ -73,6 +79,7 @@ impl Default for AdrConfig {
     fn default() -> Self {
         Self {
             dir: default_dir(),
+            paths: Vec::new(),
             start: default_start(),
             allow_gaps: false,
         }
@@ -160,6 +167,8 @@ struct AdrLayer {
     #[serde(default)]
     dir: Option<PathBuf>,
     #[serde(default)]
+    paths: Option<Vec<PathBuf>>,
+    #[serde(default)]
     start: Option<u32>,
     #[serde(default)]
     allow_gaps: Option<bool>,
@@ -189,6 +198,10 @@ impl Layer {
     fn apply_to(&self, config: &mut Config) {
         if let Some(dir) = &self.adr.dir {
             config.adr.dir = dir.clone();
+        }
+        // `paths` is a whole list: a layer that sets it replaces the list above it.
+        if let Some(paths) = &self.adr.paths {
+            config.adr.paths = paths.clone();
         }
         if let Some(start) = self.adr.start {
             config.adr.start = start;
@@ -328,6 +341,9 @@ fn validate(config: &Config) -> Result<()> {
         bail!("adr.start must be 0 or 1, found {}", config.adr.start);
     }
     validate_dir(&config.adr.dir)?;
+    for path in &config.adr.paths {
+        validate_relative(path, "adr.paths")?;
+    }
     validate_relative(&config.lock.path, "lock.path")?;
     if config.lock.statuses.iter().any(|status| status.trim().is_empty()) {
         bail!("lock.statuses must not contain empty values");
@@ -387,6 +403,10 @@ pub fn render(dir: &Path, start: u32) -> String {
 # The ADR directory, relative to this file. ADR files are `NNNN-brief-description.md`.
 [adr]
 dir = {dir}
+# Additional roots, relative to this file: directories or glob patterns such as "adrs/*".
+# When non-empty they replace `dir`. Pair them with `--recursive` to include nested ADR
+# directories, and address one namespace with e.g. `adrlint lint adrs/team-a`.
+paths = []
 # 0 or 1. The base is fixed for the life of the directory; do not change it later.
 start = {start}
 # Only for imported histories that legitimately start with holes.
@@ -563,5 +583,84 @@ mod tests {
         let layer: Layer = toml::from_str("[lock]\nstatuses = [\"proposed\"]\n").unwrap();
         layer.apply_to(&mut config);
         assert_eq!(config.lock.statuses, vec!["proposed".to_owned()]);
+    }
+
+    #[test]
+    fn should_default_to_no_additional_adr_paths() {
+        assert!(AdrConfig::default().paths.is_empty());
+        let config = merged("[adr]\ndir = \"adrs\"\n");
+        assert!(config.adr.paths.is_empty(), "paths stays empty until a layer sets it");
+    }
+
+    #[test]
+    fn should_replace_additional_adr_paths_rather_than_fold_them() {
+        let mut config = Config::default();
+        let outer: Layer = toml::from_str("[adr]\npaths = [\"adrs/*\", \"product/adrs/*\"]\n").unwrap();
+        outer.apply_to(&mut config);
+        assert_eq!(
+            config.adr.paths,
+            vec![PathBuf::from("adrs/*"), PathBuf::from("product/adrs/*")]
+        );
+
+        let inner: Layer = toml::from_str("[adr]\npaths = [\"docs/adr\"]\n").unwrap();
+        inner.apply_to(&mut config);
+        assert_eq!(
+            config.adr.paths,
+            vec![PathBuf::from("docs/adr")],
+            "a layer that sets paths replaces the whole list"
+        );
+
+        // An empty list is a value too: it restores the `dir` default rather than inheriting.
+        let cleared: Layer = toml::from_str("[adr]\npaths = []\n").unwrap();
+        cleared.apply_to(&mut config);
+        assert!(config.adr.paths.is_empty());
+    }
+
+    #[test]
+    fn should_reject_an_absolute_additional_adr_path() {
+        let config = Config {
+            adr: AdrConfig {
+                paths: vec![std::env::temp_dir().join("adr")],
+                ..AdrConfig::default()
+            },
+            ..Config::default()
+        };
+        let error = validate(&config).unwrap_err().to_string();
+        assert!(error.contains("adr.paths must be relative"), "{error}");
+    }
+
+    #[test]
+    fn should_reject_an_additional_adr_path_escaping_the_project_root() {
+        let config = Config {
+            adr: AdrConfig {
+                paths: vec![PathBuf::from("adrs/../outside")],
+                ..AdrConfig::default()
+            },
+            ..Config::default()
+        };
+        let error = validate(&config).unwrap_err().to_string();
+        assert!(error.contains("adr.paths must not escape"), "{error}");
+    }
+
+    #[test]
+    fn should_reject_an_empty_additional_adr_path() {
+        let config = Config {
+            adr: AdrConfig {
+                paths: vec![PathBuf::new()],
+                ..AdrConfig::default()
+            },
+            ..Config::default()
+        };
+        let error = validate(&config).unwrap_err().to_string();
+        assert!(error.contains("adr.paths must not be empty"), "{error}");
+    }
+
+    #[test]
+    fn should_render_the_additional_paths_key() {
+        let rendered = render(Path::new("docs/adr"), 1);
+        assert!(rendered.contains("paths = []"));
+        assert!(rendered.contains("--recursive"));
+        let parsed: Config = toml::from_str(&rendered).expect("the rendered configuration must parse");
+        assert!(parsed.adr.paths.is_empty());
     }
 }

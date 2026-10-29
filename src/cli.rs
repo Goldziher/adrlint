@@ -42,9 +42,13 @@ pub enum Command {
 
 #[derive(Debug, Args)]
 pub struct LintArgs {
-    /// Files or directories to lint; defaults to the configured ADR directory
+    /// Files, directories or glob patterns
     #[arg(value_name = "PATH")]
     pub paths: Vec<PathBuf>,
+
+    /// Include every nested directory that contains ADR files
+    #[arg(short = 'r', long)]
+    pub recursive: bool,
 
     /// Output format
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
@@ -53,9 +57,13 @@ pub struct LintArgs {
 
 #[derive(Debug, Args)]
 pub struct FormatArgs {
-    /// Files or directories to format; defaults to the configured ADR directory
+    /// Files, directories or glob patterns
     #[arg(value_name = "PATH")]
     pub paths: Vec<PathBuf>,
+
+    /// Include every nested directory that contains ADR files
+    #[arg(short = 'r', long)]
+    pub recursive: bool,
 
     /// Report files that would change without writing them
     #[arg(long)]
@@ -90,9 +98,13 @@ pub struct NewArgs {
 
 #[derive(Debug, Args)]
 pub struct LockArgs {
-    /// Files or directories to lock; defaults to the configured ADR directory
+    /// Files, directories or glob patterns
     #[arg(value_name = "PATH")]
     pub paths: Vec<PathBuf>,
+
+    /// Include every nested directory that contains ADR files
+    #[arg(short = 'r', long)]
+    pub recursive: bool,
 
     /// Verify the manifest without writing it
     #[arg(long)]
