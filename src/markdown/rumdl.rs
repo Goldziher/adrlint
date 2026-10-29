@@ -58,10 +58,10 @@ impl Engine {
 }
 
 /// The engine built for one rule configuration, reused while the configuration stays the same.
-type CachedEngine = (BTreeMap<String, String>, Rc<Engine>);
+type CachedEngine = ((bool, BTreeMap<String, String>), Rc<Engine>);
 
 thread_local! {
-    /// The engine last built on this thread, keyed by the `[markdown.rules]` it was built from.
+    /// The engine last built on this thread, keyed by the `[markdown]` settings it was built from.
     ///
     /// Building the rule set costs more than linting a small ADR, so a worker thread builds it once
     /// and reuses it for every file it handles.
@@ -71,13 +71,14 @@ thread_local! {
 fn engine(markdown: &MarkdownConfig) -> Rc<Engine> {
     ENGINE.with(|cell| {
         let mut cached = cell.borrow_mut();
-        if let Some((rules, engine)) = cached.as_ref()
-            && *rules == markdown.rules
+        let key = (markdown.enabled, markdown.rules.clone());
+        if let Some((cached_key, engine)) = cached.as_ref()
+            && *cached_key == key
         {
             return Rc::clone(engine);
         }
         let engine = Rc::new(Engine::new(markdown));
-        *cached = Some((markdown.rules.clone(), Rc::clone(&engine)));
+        *cached = Some((key, Rc::clone(&engine)));
         engine
     })
 }

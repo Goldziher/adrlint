@@ -543,3 +543,75 @@ fn should_search_configured_paths_recursively_when_configured() {
         stdout(&output)
     );
 }
+
+#[test]
+fn should_walk_a_nested_root_that_an_outer_root_ignores() {
+    let directory = unconfigured_tree();
+    fs::write(directory.path().join(".gitignore"), "build/\n").expect("writing .gitignore");
+    write_adr(directory.path(), "build/gen/adrs/0001-a.md");
+    write_adr(directory.path(), "build/gen/adrs/0003-c.md");
+
+    let output = lint_json(&directory, &["--recursive", ".", "build/gen/adrs"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert!(
+        linted_paths(&output)
+            .iter()
+            .any(|path| path.contains("build/gen/adrs/")),
+        "the explicitly named root under an ignored directory is still linted: {}",
+        stdout(&output)
+    );
+}
+
+#[test]
+fn should_honour_gitignore_but_not_other_ignore_files() {
+    let directory = unconfigured_tree();
+    fs::write(directory.path().join(".ignore"), "adrs/\n").expect("writing .ignore");
+    fs::write(directory.path().join("adrs/team-a/0003-gap.md"), ADR).expect("writing an ADR after a gap");
+
+    let output = lint_json(&directory, &[]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert!(
+        linted_paths(&output).iter().any(|path| path.contains("adrs/team-a/")),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[test]
+fn should_lint_the_remaining_log_of_a_deleted_file_a_hook_passes() {
+    let directory = unconfigured_tree();
+    fs::write(directory.path().join("adrs/team-a/0003-gap.md"), ADR).expect("writing an ADR after a gap");
+
+    let output = lint_json(&directory, &["adrs/team-a/0002-deleted.md", "adrs/gone/0001-x.md"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert!(
+        linted_paths(&output).iter().all(|path| path.contains("adrs/team-a/")),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[test]
+fn should_report_a_recursive_root_without_any_log() {
+    let directory = unconfigured_tree();
+    fs::create_dir_all(directory.path().join("notes")).expect("creating a directory");
+    fs::write(directory.path().join("notes/adr-1.md"), "# not numbered\n").expect("writing a note");
+
+    let output = run(&directory, &["lint", "--recursive", "notes"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stdout(&output));
+    assert!(stderr(&output).contains("no ADR log found"), "{}", stderr(&output));
+}
+
+#[test]
+fn should_never_rewrite_a_non_adr_file_inside_a_log() {
+    let directory = unconfigured_tree();
+    let readme = directory.path().join("adrs/team-a/README.md");
+    fs::write(&readme, "- an index  \n-   with sloppy markdown\n").expect("writing a README");
+
+    let output = run(&directory, &["lint", "--fix"]);
+    assert_ne!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert_eq!(
+        fs::read_to_string(&readme).expect("reading the README"),
+        "- an index  \n-   with sloppy markdown\n"
+    );
+}
