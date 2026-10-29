@@ -61,6 +61,28 @@ pub struct LintArgs {
     /// With --fix, write changes even when they alter the canonical content of a locked ADR
     #[arg(long, requires = "fix")]
     pub force: bool,
+
+    /// Request every http(s) link once (MADR11); overrides [lint].check_external_links
+    #[arg(long, overrides_with = "no_check_external_links")]
+    pub check_external_links: bool,
+
+    /// Skip external link checking even when the configuration enables it
+    #[arg(long, overrides_with = "check_external_links")]
+    pub no_check_external_links: bool,
+}
+
+impl LintArgs {
+    /// Whether to check external links, given the configured `[lint].check_external_links`. The last
+    /// flag on the command line wins over the configuration.
+    pub fn check_external_links(&self, configured: bool) -> bool {
+        if self.check_external_links {
+            true
+        } else if self.no_check_external_links {
+            false
+        } else {
+            configured
+        }
+    }
 }
 
 #[derive(Debug, Args)]

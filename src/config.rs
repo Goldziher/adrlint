@@ -28,8 +28,9 @@ pub struct Config {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LintConfig {
-    /// Whether `MADR11` checks that external links resolve. Not implemented yet: enabling it is a
-    /// configuration error rather than a silent no-op.
+    /// Whether `adrlint lint` requests every `http(s)` link once per run (`MADR11`). Off by default:
+    /// it needs the network and its results can change between runs. `--check-external-links` and
+    /// `--no-check-external-links` override it.
     #[serde(default)]
     pub check_external_links: bool,
 }
@@ -387,11 +388,6 @@ fn validate(config: &Config) -> Result<()> {
         validate_relative(path, "adr.paths")?;
     }
     validate_relative(&config.lock.path, "lock.path")?;
-    if config.lint.check_external_links {
-        bail!(
-            "lint.check_external_links is not supported yet: external link checking (MADR11) is not implemented; remove the key or set it to false"
-        );
-    }
     if config.lock.statuses.iter().any(|status| status.trim().is_empty()) {
         bail!("lock.statuses must not contain empty values");
     }
@@ -457,6 +453,12 @@ start = {start}
 # Only for imported histories that legitimately start with holes.
 allow_gaps = false
 
+# MADR11: request every http(s) link once per run. Off by default because it needs the network and
+# a server's answer can change between runs; findings are warnings unless [rules] sets MADR11.
+# `adrlint lint --check-external-links` / `--no-check-external-links` override this.
+[lint]
+check_external_links = false
+
 # Accepted decisions are immutable once locked. Presence of the manifest is what opts in.
 [lock]
 enabled = true
@@ -513,11 +515,29 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_external_link_checking_until_it_is_implemented() {
+    fn should_accept_external_link_checking() {
         let config = merged("[lint]\ncheck_external_links = true\n");
         assert!(config.lint.check_external_links);
-        let error = validate(&config).unwrap_err().to_string();
-        assert!(error.contains("not supported yet"), "{error}");
+        validate(&config).expect("enabling external link checking is valid");
+    }
+
+    #[test]
+    fn should_let_a_nearer_layer_disable_external_link_checking() {
+        let mut config = merged("[lint]\ncheck_external_links = true\n");
+        let inner: Layer = toml::from_str("[lint]\ncheck_external_links = false\n").unwrap();
+        inner.apply_to(&mut config);
+        assert!(!config.lint.check_external_links);
+    }
+
+    #[test]
+    fn should_render_the_lint_table() {
+        let rendered = render(Path::new("docs/adr"), 1);
+        assert!(
+            rendered.contains("[lint]\ncheck_external_links = false\n"),
+            "{rendered}"
+        );
+        let parsed: Config = toml::from_str(&rendered).expect("the rendered configuration must parse");
+        assert!(!parsed.lint.check_external_links);
     }
 
     #[test]

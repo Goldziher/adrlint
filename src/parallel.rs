@@ -29,12 +29,26 @@ where
     R: Send,
     F: Fn(&T) -> R + Sync,
 {
+    let cores = thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    map_on(items, cores, function)
+}
+
+/// [`map`] on at most `max_threads` workers, whatever the core count: for work that waits on I/O
+/// rather than the CPU, such as network requests, where the bound is a politeness limit.
+///
+/// # Errors
+///
+/// Returns the operating system error when a worker thread cannot be spawned.
+pub fn map_on<T, R, F>(items: &[T], max_threads: usize, function: F) -> io::Result<Vec<R>>
+where
+    T: Sync,
+    R: Send,
+    F: Fn(&T) -> R + Sync,
+{
     if items.is_empty() {
         return Ok(Vec::new());
     }
-    let threads = thread::available_parallelism()
-        .map_or(1, std::num::NonZeroUsize::get)
-        .min(items.len());
+    let threads = max_threads.clamp(1, items.len());
 
     let next = AtomicUsize::new(0);
     let next = &next;
@@ -98,6 +112,15 @@ mod tests {
         let caller = thread::current().id();
         let ran = map(&[()], |()| thread::current().id()).unwrap();
         assert_ne!(ran, [caller], "a single item must still get the worker stack");
+    }
+
+    #[test]
+    fn should_run_on_at_most_the_requested_threads() {
+        let items = (0..200).collect::<Vec<usize>>();
+        let threads = map_on(&items, 3, |_| thread::current().id()).unwrap();
+        assert!(threads.iter().collect::<std::collections::HashSet<_>>().len() <= 3);
+        assert_eq!(map_on(&items, 3, |item| *item).unwrap(), items);
+        assert_eq!(map_on(&[1_u8], 0, |item| *item).unwrap(), [1]);
     }
 
     #[test]

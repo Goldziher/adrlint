@@ -10,7 +10,8 @@
 //!   `adrlint.lock`.
 //! - [`config::load`] resolves the layered configuration.
 //!
-//! Nothing in the library shells out or performs network I/O.
+//! Nothing in the library shells out. The only network I/O is [`rules::check_external_links`]
+//! (`MADR11`), which runs only when called; `adrlint lint` calls it only when it is opted into.
 //!
 //! ```no_run
 //! use adrlint::{adr, rules};

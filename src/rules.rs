@@ -6,11 +6,13 @@ use crate::config::AdrConfig;
 use crate::diagnostics::Diagnostic;
 use crate::discovery::{AdrFile, Directory};
 
+mod external;
 mod links;
 mod metadata;
 mod structure;
 mod style;
 
+pub use external::{Citation, REQUEST_TIMEOUT, check_external_links, external_citations};
 pub use links::{check_links, is_image, referenced_images};
 pub use metadata::check_metadata;
 pub use structure::check_structure;
@@ -61,8 +63,8 @@ fn longest_rule_setting<'a>(rules: &'a BTreeMap<String, String>, code: &str) -> 
 /// prefix one of these codes or one of rumdl's (`MD###`), which [`apply_overrides`] also covers.
 const IMPLEMENTED_CODES: &[&str] = &[
     "MADR01a", "MADR01b", "MADR01c", "MADR01d", "MADR02", "MADR03a", "MADR03b", "MADR04", "MADR05", "MADR06",
-    "MADR07a", "MADR07b", "MADR08a", "MADR08b", "MADR12a", "MADR12b", "MADR12c", "MADR12d", "MADR21", "MADR31",
-    "MADR41a", "MADR41b", "MADR42", "MADR43", "MADR44", "ADR50", "ADR51", "ADR52",
+    "MADR07a", "MADR07b", "MADR08a", "MADR08b", "MADR11", "MADR12a", "MADR12b", "MADR12c", "MADR12d", "MADR21",
+    "MADR31", "MADR41a", "MADR41b", "MADR42", "MADR43", "MADR44", "ADR50", "ADR51", "ADR52",
 ];
 
 /// The configured keys that cannot match any implemented finding.

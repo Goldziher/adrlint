@@ -70,7 +70,8 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
         refused = !outcome.refused.is_empty() || outcome.failed;
     }
 
-    let mut collected = collect(&loaded, &directories, true)?;
+    let external = args.check_external_links(loaded.config.lint.check_external_links);
+    let mut collected = collect(&loaded, &directories, true, external)?;
     show_paths(&mut collected.findings);
     if let Some(canonical) = collected.stale {
         report_stale_lock(&lock_path(&loaded), canonical);
@@ -294,10 +295,12 @@ struct Collected {
     files: usize,
 }
 
-/// One file's findings, the images it references and, when it could be read, its parsed document.
+/// One file's findings, the images it references, its external links when they are to be checked
+/// and, when it could be read, its parsed document.
 struct Checked {
     findings: Vec<diagnostics::Diagnostic>,
     images: Vec<PathBuf>,
+    citations: Vec<rules::Citation>,
     document: Option<(PathBuf, Document)>,
 }
 
@@ -316,7 +319,15 @@ fn scan_all(directories: &[PathBuf]) -> Result<Vec<discovery::Directory>> {
 /// The directories are listed and the files checked in parallel; each file is read exactly once for
 /// the MADR rules, the Markdown rules and the source lines the report quotes. Results are merged in
 /// input order and sorted, so the output does not depend on thread timing.
-fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -> Result<Collected> {
+///
+/// `check_external` runs `MADR11` over every ADR at once, so a URL cited by several ADRs is requested
+/// once. Only `lint` passes `true`; `format` and `lock` never touch the network.
+fn collect(
+    loaded: &config::Loaded,
+    directories: &[PathBuf],
+    check_lock: bool,
+    check_external: bool,
+) -> Result<Collected> {
     let scanned = scan_all(directories)?;
     let mut findings = Vec::new();
     let files = scanned
@@ -324,13 +335,15 @@ fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -
         .flat_map(|directory| directory.adrs.iter())
         .collect::<Vec<_>>();
     let mut documents = Vec::with_capacity(files.len());
+    let mut citations = Vec::new();
     // The images each log's ADRs reference, keyed by the log: those are assets, not foreign files.
     let mut images = std::collections::BTreeMap::<PathBuf, BTreeSet<PathBuf>>::new();
-    for (file, checked) in files
-        .iter()
-        .zip(parallel::map(&files, |file| check_file(loaded, &file.path)).context("starting worker threads")?)
-    {
+    for (file, checked) in files.iter().zip(
+        parallel::map(&files, |file| check_file(loaded, &file.path, check_external))
+            .context("starting worker threads")?,
+    ) {
         findings.extend(checked.findings);
+        citations.extend(checked.citations);
         documents.extend(checked.document);
         if let Some(parent) = file.path.parent()
             && !checked.images.is_empty()
@@ -346,6 +359,10 @@ fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -
             &loaded.config.adr,
             referenced,
         ));
+    }
+    if !citations.is_empty() {
+        findings
+            .extend(rules::check_external_links(citations, rules::REQUEST_TIMEOUT).context("starting worker threads")?);
     }
     let mut stale = None;
 
@@ -378,13 +395,14 @@ fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -
     })
 }
 
-fn check_file(loaded: &config::Loaded, path: &Path) -> Checked {
+fn check_file(loaded: &config::Loaded, path: &Path, check_external: bool) -> Checked {
     let source = match read_adr(path) {
         Ok(source) => source,
         Err(finding) => {
             return Checked {
                 findings: vec![*finding],
                 images: Vec::new(),
+                citations: Vec::new(),
                 document: None,
             };
         }
@@ -411,9 +429,23 @@ fn check_file(loaded: &config::Loaded, path: &Path) -> Checked {
             finding.fixable = false;
         }
     }
+    let mut citations = if check_external {
+        rules::external_citations(&document, path)
+    } else {
+        Vec::new()
+    };
+    let mut cited = citations
+        .iter()
+        .map(|citation| citation.finding.clone())
+        .collect::<Vec<_>>();
+    diagnostics::locate(&mut cited, &source);
+    for (citation, finding) in citations.iter_mut().zip(cited) {
+        citation.finding = finding;
+    }
     Checked {
         findings,
         images: rules::referenced_images(&document, path, &loaded.root),
+        citations,
         document: Some((path.to_path_buf(), document)),
     }
 }
@@ -882,7 +914,7 @@ fn lock_command(config_path: Option<&Path>, args: LockArgs, color: bool) -> Resu
         documents,
         stale,
         ..
-    } = collect(&loaded, &directories, true)?;
+    } = collect(&loaded, &directories, true, false)?;
     show_paths(&mut findings);
     if diagnostics::has_errors(&findings) {
         report::print(&findings, OutputFormat::Text, color)?;

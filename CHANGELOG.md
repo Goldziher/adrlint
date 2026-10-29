@@ -19,8 +19,10 @@ All notable changes to this project are documented in this file.
   source line with an underline in text output, `endLine`/`endColumn` in GitHub annotations, and
   `end_line`, `end_column`, `help` and `fixable` in JSON (all existing fields are unchanged).
 - A closing summary line on stderr in text mode: errors, warnings, files checked and fixable count.
-- The `[lint]` table with `check_external_links`; `true` is rejected with a clear error until `MADR11`
-  is implemented.
+- Opt-in external link checking, `MADR11`: `[lint].check_external_links` or
+  `lint --check-external-links` (`--no-check-external-links` overrides the configuration) requests
+  each `http(s)` link once per run, HEAD then GET, with a 10 s timeout. Findings are warnings unless
+  `[rules] MADR11` says otherwise; `429` is not reported, and `format` and `lock` never use the network.
 - Hardening tests with synthetic monorepos: nested logs at several depths, ignored build output,
   symlink loops, unreadable and non-UTF-8 files, very large ADRs, CRLF, front matter edge cases and
   thousands of directories.

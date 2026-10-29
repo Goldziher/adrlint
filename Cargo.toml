@@ -44,6 +44,8 @@ saphyr = { version = "0.3.3", default-features = false }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 toml = "1.1.8"
+# MADR11 only: blocking, rustls with no OpenSSL and no async runtime.
+ureq = { version = "3.5.0", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

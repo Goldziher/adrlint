@@ -58,6 +58,19 @@ impl Diagnostic {
         }
     }
 
+    /// A finding that does not fail the run unless `[rules]` upgrades it.
+    pub fn warning(
+        code: &'static str,
+        path: impl Into<std::path::PathBuf>,
+        line: usize,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            severity: Severity::Warning,
+            ..Self::error(code, path, line, message)
+        }
+    }
+
     /// Sets the full span, with an exclusive end column.
     #[must_use]
     pub fn with_span(mut self, column: usize, end_line: usize, end_column: usize) -> Self {
@@ -145,6 +158,7 @@ pub fn default_help(code: &str) -> Option<&'static str> {
         "MADR07a" | "MADR07b" => "make it a `###` heading inside `## Decision Outcome`",
         "MADR08a" => "move the title to the first line after the front matter",
         "MADR08b" => "reorder the sections to follow the MADR template",
+        "MADR11" => "update or remove the link; if the server is only down, run the check again later",
         "MADR31" => "use `*` as the list marker",
         "MADR41a" => "number the first ADR of the log with the configured `adr.start`",
         "MADR41b" => "number ADRs consecutively, or set `adr.allow_gaps = true`",
