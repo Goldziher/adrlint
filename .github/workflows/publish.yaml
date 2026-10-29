@@ -15,14 +15,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+# Every job states the permissions it needs. `id-token: write` is granted only to the jobs that
+# exchange an OIDC token for a registry credential, never workflow-wide.
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   meta:
     name: Resolve versions
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       python_version: ${{ steps.version.outputs.python_version }}
@@ -32,19 +35,26 @@ jobs:
       pypi_exists: ${{ steps.published.outputs.pypi_exists }}
       release_assets_exist: ${{ steps.release_assets.outputs.release_assets_exist }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
-
-      - name: Extract version from tag
+      # Validate before checkout, builds or any registry call so a malformed or hostile ref cannot
+      # reach a later step at all.
+      - name: Validate the release tag
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ github.event.inputs.tag }}"
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
           else
             tag="${GITHUB_REF#refs/tags/}"
+          fi
+
+          # A tag name is attacker-controlled input that reaches `gh release create`, so it must be
+          # shaped like a release before any of it is used.
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Refusing to release '$tag': expected v<major>.<minor>.<patch> with an optional -<suffix>."
+            exit 1
           fi
 
           version="${tag#v}"
@@ -60,11 +70,20 @@ jobs:
           echo "Cargo/npm version: $version"
           echo "Python version: $python_version"
 
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
+
       - name: Verify version consistency across all surfaces
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PYTHON_VERSION: ${{ steps.version.outputs.python_version }}
         run: |
           set -euo pipefail
-          target_version="${{ steps.version.outputs.version }}"
-          target_python_version="${{ steps.version.outputs.python_version }}"
+          target_version="$VERSION"
+          target_python_version="$PYTHON_VERSION"
 
           cargo_version="$(grep -E '^version = "' Cargo.toml | head -1 | cut -d'"' -f2)"
           if [ "$cargo_version" != "$target_version" ]; then
@@ -94,9 +113,13 @@ jobs:
 
       - name: Detect already-published versions
         id: published
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PYTHON_VERSION: ${{ steps.version.outputs.python_version }}
         run: |
-          version="${{ steps.version.outputs.version }}"
-          python_version="${{ steps.version.outputs.python_version }}"
+          set -euo pipefail
+          version="$VERSION"
+          python_version="$PYTHON_VERSION"
 
           crates_exists=false
           if curl -fsS "https://crates.io/api/v1/crates/adrlint/${version}" >/dev/null; then
@@ -127,9 +150,11 @@ jobs:
       - name: Detect existing GitHub release assets
         id: release_assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          tag="${{ steps.version.outputs.tag }}"
+          set -euo pipefail
+          tag="$TAG"
           release_assets_exist=false
 
           if gh release view "$tag" >/dev/null 2>&1; then
@@ -147,24 +172,66 @@ jobs:
           echo "release_assets_exist=$release_assets_exist" >> "$GITHUB_OUTPUT"
           echo "GitHub release assets exist? $release_assets_exist"
 
-  create_release:
-    name: Create GitHub release (draft)
+  # Nothing is built or published until the tagged commit passes the same gates CI enforces.
+  verify:
+    name: Verify the tagged commit
     needs: meta
-    if: needs.meta.outputs.release_assets_exist != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.94"
+          components: clippy, rustfmt
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: verify
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Check licenses, bans, advisories and sources
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        with:
+          command: check
+
+  create_release:
+    name: Create GitHub release (draft)
+    needs: [meta, verify]
+    if: needs.meta.result == 'success' && needs.verify.result == 'success' && needs.meta.outputs.release_assets_exist != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Ensure the GitHub release exists as a draft
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
         run: |
           set -euo pipefail
-          tag="${{ needs.meta.outputs.tag }}"
+          tag="$TAG"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release $tag already exists."
           else
@@ -177,8 +244,8 @@ jobs:
 
   build-macos:
     name: Build macOS / ${{ matrix.triple }}
-    needs: [meta, create_release]
-    if: needs.meta.outputs.release_assets_exist != 'true'
+    needs: [meta, verify, create_release]
+    if: needs.verify.result == 'success' && needs.create_release.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -188,47 +255,57 @@ jobs:
           - triple: x86_64-apple-darwin
             os: macos-15-intel
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: "1.94"
           targets: ${{ matrix.triple }}
 
       - name: Setup cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: ${{ matrix.triple }}
 
       - name: Build release binary
-        run: cargo build --release --bin adrlint --target "${{ matrix.triple }}"
+        env:
+          TRIPLE: ${{ matrix.triple }}
+        run: cargo build --release --bin adrlint --target "$TRIPLE"
 
       - name: Package archive
+        env:
+          TRIPLE: ${{ matrix.triple }}
         run: |
           set -euo pipefail
-          tar czf "adrlint-${{ matrix.triple }}.tar.gz" \
-            -C "target/${{ matrix.triple }}/release" adrlint
+          tar czf "adrlint-${TRIPLE}.tar.gz" -C "target/${TRIPLE}/release" adrlint
 
       - name: Upload to GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.meta.outputs.tag }}" "adrlint-${{ matrix.triple }}.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          TRIPLE: ${{ matrix.triple }}
+        run: gh release upload "$TAG" "adrlint-${TRIPLE}.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
 
   build-windows:
     name: Build Windows / x86_64-pc-windows-gnu
-    needs: [meta, create_release]
-    if: needs.meta.outputs.release_assets_exist != 'true'
+    needs: [meta, verify, create_release]
+    if: needs.verify.result == 'success' && needs.create_release.result == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       TRIPLE: x86_64-pc-windows-gnu
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
@@ -239,12 +316,13 @@ jobs:
           sudo apt-get install -y gcc-mingw-w64-x86-64 zip
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: "1.94"
           targets: x86_64-pc-windows-gnu
 
       - name: Setup cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: x86_64-pc-windows-gnu
 
@@ -262,15 +340,18 @@ jobs:
 
       - name: Upload to GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.meta.outputs.tag }}" "adrlint-${TRIPLE}.zip" --clobber --repo "$GITHUB_REPOSITORY"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: gh release upload "$TAG" "adrlint-${TRIPLE}.zip" --clobber --repo "$GITHUB_REPOSITORY"
 
   build-linux:
     name: Build Linux / ${{ matrix.triple }}
-    needs: [meta, create_release]
-    if: needs.meta.outputs.release_assets_exist != 'true'
+    needs: [meta, verify, create_release]
+    if: needs.verify.result == 'success' && needs.create_release.result == 'success'
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.image }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -278,24 +359,43 @@ jobs:
           - triple: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             image: quay.io/pypa/manylinux_2_28_x86_64:latest
+            rustup_arch: x86_64
+            rustup_init_sha256: 20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c
           - triple: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
             image: quay.io/pypa/manylinux_2_28_aarch64:latest
+            rustup_arch: aarch64
+            rustup_init_sha256: e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
+      # The manylinux images ship no Rust. Installing rustup by piping a remote script into a shell
+      # executes whatever that URL serves; instead the versioned rustup-init binary is fetched and
+      # checked against the digest pinned in the matrix before it runs.
       - name: Install Rust (in container)
+        env:
+          RUSTUP_VERSION: "1.28.2"
+          RUSTUP_ARCH: ${{ matrix.rustup_arch }}
+          RUSTUP_INIT_SHA256: ${{ matrix.rustup_init_sha256 }}
         run: |
           set -euo pipefail
+          curl -fsSLo rustup-init \
+            "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUSTUP_ARCH}-unknown-linux-gnu/rustup-init"
+          echo "${RUSTUP_INIT_SHA256}  rustup-init" | sha256sum -c -
+          chmod +x rustup-init
           export CARGO_HOME=/opt/cargo
           export RUSTUP_HOME=/opt/rustup
-          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
-          echo "CARGO_HOME=/opt/cargo" >> "$GITHUB_ENV"
-          echo "RUSTUP_HOME=/opt/rustup" >> "$GITHUB_ENV"
+          ./rustup-init -y --profile minimal --no-modify-path --default-toolchain 1.94
+          rm -f rustup-init
+          {
+            echo "CARGO_HOME=/opt/cargo"
+            echo "RUSTUP_HOME=/opt/rustup"
+            echo "RUSTUP_TOOLCHAIN=1.94"
+          } >> "$GITHUB_ENV"
           echo "/opt/cargo/bin" >> "$GITHUB_PATH"
 
       - name: Install gh CLI (in container)
@@ -306,35 +406,44 @@ jobs:
           dnf install -y gh
 
       - name: Build release binary
-        run: cargo build --release --bin adrlint --target "${{ matrix.triple }}"
+        env:
+          TRIPLE: ${{ matrix.triple }}
+        run: cargo build --release --bin adrlint --target "$TRIPLE"
 
       - name: Package archive
+        env:
+          TRIPLE: ${{ matrix.triple }}
         run: |
           set -euo pipefail
-          tar czf "adrlint-${{ matrix.triple }}.tar.gz" \
-            -C "target/${{ matrix.triple }}/release" adrlint
+          tar czf "adrlint-${TRIPLE}.tar.gz" -C "target/${TRIPLE}/release" adrlint
 
       - name: Upload to GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          TRIPLE: ${{ matrix.triple }}
         run: |
           set -euo pipefail
           git config --global --add safe.directory "${GITHUB_WORKSPACE:-/__w/adrlint/adrlint}"
-          gh release upload "${{ needs.meta.outputs.tag }}" \
-            "adrlint-${{ matrix.triple }}.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$TAG" "adrlint-${TRIPLE}.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
 
   checksums:
     name: Generate and upload checksums
     needs: [meta, build-macos, build-windows, build-linux]
+    if: needs.build-macos.result == 'success' && needs.build-windows.result == 'success' && needs.build-linux.result == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Verify all 5 archives are present, then generate checksums
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
         run: |
           set -euo pipefail
-          tag="${{ needs.meta.outputs.tag }}"
-          version="${{ needs.meta.outputs.version }}"
+          tag="$TAG"
+          version="$VERSION"
 
           expected=(
             "adrlint-x86_64-unknown-linux-gnu.tar.gz"
@@ -367,17 +476,23 @@ jobs:
 
   finalize_release:
     name: Publish GitHub release
-    needs: [meta, checksums]
-    if: always() && needs.meta.result == 'success' && (needs.checksums.result == 'success' || needs.checksums.result == 'skipped')
+    needs: [meta, verify, checksums]
+    # `checksums` is skipped only when `meta` found every archive already on the release (a re-run),
+    # and this job verifies all six assets itself before promoting, so a skip is not trusted blindly.
+    if: needs.meta.result == 'success' && needs.verify.result == 'success' && (needs.checksums.result == 'success' || needs.checksums.result == 'skipped')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Promote draft to published once complete
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
         run: |
           set -euo pipefail
-          tag="${{ needs.meta.outputs.tag }}"
-          version="${{ needs.meta.outputs.version }}"
+          tag="$TAG"
+          version="$VERSION"
 
           required=(
             "adrlint-x86_64-unknown-linux-gnu.tar.gz"
@@ -406,16 +521,19 @@ jobs:
 
   float_major_tag:
     name: Float the major tag
-    needs: [meta, finalize_release]
-    if: always() && needs.meta.result == 'success' && needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha')
+    needs: [meta, verify, finalize_release]
+    if: needs.verify.result == 'success' && needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Move the major tag onto this release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
         run: |
           set -euo pipefail
-          tag="${{ needs.meta.outputs.tag }}"
+          tag="$TAG"
           major="${tag%%.*}"
 
           sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq '.object.sha')"
@@ -434,9 +552,11 @@ jobs:
 
   verify-binstall:
     name: Verify cargo-binstall install
-    needs: [meta, finalize_release]
-    if: needs.meta.outputs.release_assets_exist != 'true' && needs.finalize_release.result == 'success'
-    uses: xberg-io/actions/.github/workflows/reusable-binstall-verify.yml@v1.24.1
+    needs: [meta, verify, finalize_release]
+    if: needs.verify.result == 'success' && needs.finalize_release.result == 'success' && needs.meta.outputs.release_assets_exist != 'true'
+    permissions:
+      contents: read
+    uses: xberg-io/actions/.github/workflows/reusable-binstall-verify.yml@7bb3390acdfa67fe900d36d3eba1e2bca2032ef7 # v1.24.1
     with:
       package-name: adrlint
       binary-name: adrlint
@@ -453,21 +573,27 @@ jobs:
 
   publish_crates:
     name: Publish crates.io
-    needs: [meta, build-macos, build-windows, build-linux]
-    if: always() && needs.meta.result == 'success' && needs.meta.outputs.crates_exists != 'true' && needs.build-macos.result != 'failure' && needs.build-windows.result != 'failure' && needs.build-linux.result != 'failure'
+    needs: [meta, verify, finalize_release]
+    if: needs.meta.result == 'success' && needs.verify.result == 'success' && needs.finalize_release.result == 'success' && needs.meta.outputs.crates_exists != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # crates-io-auth-action exchanges this for a scoped registry token.
+      id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.94"
 
       - name: Authenticate to crates.io
-        uses: rust-lang/crates-io-auth-action@v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
         id: crates_auth
 
       - name: Publish to crates.io
@@ -489,33 +615,40 @@ jobs:
 
   publish_npm:
     name: Publish npm
-    needs: [meta, finalize_release]
-    if: always() && needs.meta.result == 'success' && needs.meta.outputs.npm_exists != 'true' && needs.finalize_release.result == 'success'
+    needs: [meta, verify, finalize_release]
+    if: needs.meta.result == 'success' && needs.verify.result == 'success' && needs.finalize_release.result == 'success' && needs.meta.outputs.npm_exists != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # `pnpm publish --provenance` signs the attestation with the workflow's OIDC identity
+      # (npm trusted publishing); without this the upload is rejected.
+      id-token: write
     steps:
       - name: Setup pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: "12.11.2"
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish to npm
         env:
+          VERSION: ${{ needs.meta.outputs.version }}
           NODE_AUTH_TOKEN: ""
         run: |
+          set -euo pipefail
           unset NODE_AUTH_TOKEN
           cd npm-package
-          version="${{ needs.meta.outputs.version }}"
+          version="$VERSION"
           if [[ "$version" == *"-rc."* ]]; then
             npm_tag="beta"
           else
@@ -526,19 +659,23 @@ jobs:
 
   publish_pypi:
     name: Publish PyPI
-    needs: [meta, finalize_release]
-    if: always() && needs.meta.result == 'success' && needs.meta.outputs.pypi_exists != 'true' && needs.finalize_release.result == 'success'
+    needs: [meta, verify, finalize_release]
+    if: needs.meta.result == 'success' && needs.verify.result == 'success' && needs.finalize_release.result == 'success' && needs.meta.outputs.pypi_exists != 'true'
     runs-on: ubuntu-latest
     environment: pypi
+    permissions:
+      contents: read
+      # PyPI trusted publishing: gh-action-pypi-publish mints the upload token over OIDC.
+      id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.14"
 
@@ -550,39 +687,50 @@ jobs:
           python -m build
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
         with:
           packages-dir: pip-package/dist
           skip-existing: true
 
   publish_homebrew:
     name: Update Homebrew formula
-    needs: [meta, finalize_release]
-    if: always() && needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha')
+    needs: [meta, verify, finalize_release]
+    if: needs.meta.result == 'success' && needs.verify.result == 'success' && needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Generate formula and push to tap
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TOKEN: ${{ secrets.HOMEBREW_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
         run: |
           set -euo pipefail
           if [ -z "${HOMEBREW_TOKEN:-}" ]; then
             echo "HOMEBREW_TOKEN not set; skipping the Homebrew formula update."
             exit 0
           fi
-          tag="${{ needs.meta.outputs.tag }}"
-          version="${{ needs.meta.outputs.version }}"
+          tag="$TAG"
+          version="$VERSION"
           gh release download "$tag" -p "adrlint_${version}_checksums.txt" -O checksums.txt
           ./scripts/update-homebrew-formula.sh "$version" checksums.txt > adrlint.rb
 
-          git clone --depth 1 "https://x-access-token:${HOMEBREW_TOKEN}@github.com/Goldziher/homebrew-tap.git" tap
+          # The credential is passed to git through the environment (GIT_CONFIG_*), so it never
+          # appears in argv or in the clone's .git/config.
+          basic="$(printf 'x-access-token:%s' "$HOMEBREW_TOKEN" | base64 | tr -d '\n')"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.extraheader
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${basic}"
+
+          git clone --depth 1 https://github.com/Goldziher/homebrew-tap.git tap
           cp adrlint.rb tap/Formula/adrlint.rb
           cd tap
           git config user.name "github-actions[bot]"

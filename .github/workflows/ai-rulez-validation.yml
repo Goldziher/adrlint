@@ -12,7 +12,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: xberg-io/actions/setup-ai-rulez@98adf87f1ed4c62a57ff56f9010d62faf42d4db6
         with:
           ai-rulez-version: "5.8.0"

@@ -54,15 +54,16 @@ runs:
       id: resolve
       shell: bash
       env:
+        ACTION_PATH: ${{ github.action_path }}
         VERSION_INPUT: ${{ inputs.version }}
         ACTION_REF: ${{ github.action_ref }}
         REPOSITORY: ${{ inputs.repository }}
         GH_TOKEN: ${{ inputs.token }}
-      run: bash "${{ github.action_path }}/scripts/gh-action-resolve.sh"
+      run: bash "$ACTION_PATH/scripts/gh-action-resolve.sh"
 
     - name: Cache adrlint binary
       id: cache
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ steps.resolve.outputs.bin-dir }}
         key: adrlint-${{ steps.resolve.outputs.tag }}-${{ runner.os }}-${{ runner.arch }}
@@ -71,6 +72,7 @@ runs:
       id: install
       shell: bash
       env:
+        ACTION_PATH: ${{ github.action_path }}
         CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
         REPO: ${{ steps.resolve.outputs.repo }}
         TAG: ${{ steps.resolve.outputs.tag }}
@@ -79,13 +81,14 @@ runs:
         CHECKSUMS: ${{ steps.resolve.outputs.checksums }}
         BIN_DIR: ${{ steps.resolve.outputs.bin-dir }}
         GH_TOKEN: ${{ inputs.token }}
-      run: bash "${{ github.action_path }}/scripts/gh-action-install.sh"
+      run: bash "$ACTION_PATH/scripts/gh-action-install.sh"
 
     - name: Run adrlint
       if: inputs.install-only != 'true'
       shell: bash
       env:
+        ACTION_PATH: ${{ github.action_path }}
         ARGS: ${{ inputs.args }}
         WORKING_DIRECTORY: ${{ inputs.working-directory }}
         MATCHER_PATH: ${{ github.action_path }}/problem-matcher.json
-      run: bash "${{ github.action_path }}/scripts/gh-action-run.sh"
+      run: bash "$ACTION_PATH/scripts/gh-action-run.sh"
