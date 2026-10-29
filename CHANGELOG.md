@@ -31,8 +31,8 @@ All notable changes to this project are documented in this file.
   is still linted but never reformatted, and its findings are not marked fixable.
 
 - Directories are listed and ADRs checked in parallel, each file is read once and the Markdown rule
-  set is built once per worker thread; output is sorted and exact duplicates are dropped, so it is
-  byte-identical across runs.
+  set is built once per worker thread; output is sorted, so it is byte-identical across runs.
+  Inputs that reach the same directory are merged before linting, so each file is checked once.
 - Discovery walks once: the directories found for zero-config runs are reused, and the directories
   of overlapping recursive roots are merged. A path the walk cannot read is a stderr warning instead of an abort.
 - An ADR larger than 16 MiB is reported as `ADR52` instead of being parsed.

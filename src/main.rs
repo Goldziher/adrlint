@@ -353,7 +353,6 @@ fn collect(loaded: &config::Loaded, directories: &[PathBuf], check_lock: bool) -
     rules::apply_overrides(&mut findings, &loaded.config.rules);
     diagnostics::add_default_help(&mut findings);
     diagnostics::sort(&mut findings);
-    findings.dedup();
     Ok(Collected {
         findings,
         documents,

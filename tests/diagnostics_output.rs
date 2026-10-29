@@ -196,3 +196,24 @@ fn should_print_paths_relative_to_the_working_directory() {
         stdout(&output)
     );
 }
+
+#[test]
+fn should_lint_a_file_once_however_many_inputs_reach_it() {
+    let directory = project(&[("0001-x.md", misplaced())]);
+    let once = findings(&run(&directory, &["lint", "--format", "json", "docs/adr"]));
+    assert!(!once.is_empty());
+
+    let overlapping = run(
+        &directory,
+        &[
+            "lint",
+            "--format",
+            "json",
+            "docs/adr",
+            "./docs/adr",
+            "docs/adr/0001-x.md",
+            "docs/*/0001-x.md",
+        ],
+    );
+    assert_eq!(findings(&overlapping), once, "{}", stderr(&overlapping));
+}
