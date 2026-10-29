@@ -16,7 +16,7 @@ MADR-native&nbsp;·&nbsp;rumdl-powered&nbsp;·&nbsp;sequential numbering&nbsp;·
 [![CI](https://img.shields.io/github/actions/workflow/status/Goldziher/adrlint/ci.yml?style=flat-square&label=CI)](https://github.com/Goldziher/adrlint/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-f59e0b?style=flat-square)](./LICENSE)
 
-[Install](#installation)&nbsp;·&nbsp;[Quick start](#quick-start)&nbsp;·&nbsp;[Rules](#rules)&nbsp;·&nbsp;[Configuration](#configuration)&nbsp;·&nbsp;[Locking](#immutability-and-locking)&nbsp;·&nbsp;[GitHub Action](#github-action)
+[Install](#installation)&nbsp;·&nbsp;[Quick start](#quick-start)&nbsp;·&nbsp;[Integrations](#integrations)&nbsp;·&nbsp;[Rules](#rules)&nbsp;·&nbsp;[Configuration](#configuration)&nbsp;·&nbsp;[Locking](#immutability-and-locking)&nbsp;·&nbsp;[GitHub Action](#github-action)
 
 </div>
 
@@ -33,25 +33,25 @@ Markdown linter checks none of them:
 3. **The prose is clean Markdown** — so it renders the same everywhere and survives review.
 4. **Accepted decisions do not change** — a later edit is a new decision, not a quiet rewrite.
 
-adrlint is built to check all four in one run, from one parse, with one exit code.
+adrlint checks all four in one run, from one parse, with one exit code.
 
 ## Status
 
-adrlint is at **0.2.1** and under active construction. The implemented surface is:
+adrlint is at **0.3.0**. The rule IDs and configuration keys are stable; nothing in this README is a
+placeholder name. The implemented surface is:
 
-- `adrlint lint` — `MADR01`–`MADR08` structural rules, `MADR12`/`MADR21`/`MADR31` integrity and
-  style rules, `MADR41`–`MADR44` directory rules, `ADR50`–`ADR52` immutability and readability
-  checks, and rumdl's `MD###` Markdown rules
+- `adrlint lint` — `MADR01`–`MADR08` structural rules, `MADR11`/`MADR12`/`MADR21`/`MADR31` link,
+  metadata and style rules, `MADR41`–`MADR44` directory rules, `ADR50`–`ADR52` immutability and
+  readability checks, and rumdl's `MD###` Markdown rules
 - `adrlint format` — rumdl's fixes, with `--check` for CI; `adrlint lint --fix` adds the safe MADR
   structural fixes and lints again
 - `adrlint init` — writes `.adrlint.toml` and a starter ADR
 - `adrlint new "<title>"` — creates the next sequential ADR
 - `adrlint lock` / `adrlint unlock` — the content-hash immutability manifest
 
-External link checking (`MADR11`) is the remaining MADR rule; it is opt-in because it needs network
-access, and it is not implemented yet: `[lint].check_external_links = true` is rejected with a clear
-error rather than ignored. The rule IDs and configuration keys are stable from the first release; nothing in this
-README is a placeholder name.
+New in 0.3.0: opt-in external link checking (`MADR11`), enabled by `[lint].check_external_links` or
+`adrlint lint --check-external-links`. It is off by default because it needs network access and makes
+a run non-deterministic. See [Links](#links-madr11madr12).
 
 ## Features
 
@@ -61,28 +61,93 @@ README is a placeholder name.
 - **Immutability** — accepted ADRs locked by a content hash, not by file timestamps
 - **Formatting** — one formatter for the Markdown, idempotent by construction
 - **Gate-ready** — non-zero exit on errors, GitHub annotations, JSON output
+- **Zero configuration** — finds ADR logs in a monorepo without being told where they are
 - **Single binary** — no runtime, no downloaded grammar, no bundled script
 - **Configurable** — layered `.adrlint.toml` with per-rule severities
 
 ## Installation
+
+adrlint is one self-contained binary. Every channel installs the same release build.
 
 | Channel                | Command                                                                                         |
 | ---------------------- | ----------------------------------------------------------------------------------------------- |
 | Homebrew (macOS/Linux) | `brew tap goldziher/tap && brew install adrlint`                                                |
 | Scoop (Windows)        | `scoop bucket add goldziher https://github.com/Goldziher/scoop-bucket && scoop install adrlint` |
 | Cargo (Rust)           | `cargo install adrlint`                                                                         |
+| Cargo, prebuilt        | `cargo binstall adrlint`                                                                        |
 | npm (Node.js)          | `pnpm add -g adrlint`                                                                           |
 | pip (Python)           | `pip install adrlint`                                                                           |
+| GitHub Release         | [archive per platform](#prebuilt-archives)                                                      |
 
-Prefer prebuilt binaries? [`cargo binstall adrlint`](https://github.com/cargo-bins/cargo-binstall)
-downloads a release archive instead of compiling.
+### Cargo
+
+```bash
+cargo install adrlint          # compiles from crates.io; needs Rust 1.94+
+cargo binstall adrlint         # downloads the release archive instead of compiling
+```
+
+[`cargo binstall`](https://github.com/cargo-bins/cargo-binstall) resolves
+`adrlint-<target>.tar.gz` (`.zip` on Windows) from the matching GitHub Release.
+
+### npm
+
+```bash
+npm install -g adrlint         # or: pnpm add -g adrlint, yarn global add adrlint, bun add -g adrlint
+```
 
 Run without installing:
 
 ```bash
-pnpm dlx adrlint@latest lint
-uvx adrlint lint
+npx adrlint lint               # or: pnpm dlx adrlint@latest lint, yarn dlx adrlint lint, bunx adrlint lint
 ```
+
+The package downloads the release archive for your platform on `postinstall`, verifies its SHA-256
+against the release checksums before extracting, and pins its own version. Requires Node.js 22+.
+
+### Python
+
+```bash
+pip install adrlint            # or: pipx install adrlint, uv tool install adrlint
+```
+
+Run without installing:
+
+```bash
+uvx adrlint lint               # or: pipx run adrlint lint
+```
+
+The wheel downloads and caches the matching release binary with the same checksum verification.
+Requires Python 3.10+.
+
+### Prebuilt archives
+
+Each release publishes five archives and a checksum manifest:
+
+| Platform            | Archive                                    |
+| ------------------- | ------------------------------------------ |
+| Linux x86_64        | `adrlint-x86_64-unknown-linux-gnu.tar.gz`  |
+| Linux arm64         | `adrlint-aarch64-unknown-linux-gnu.tar.gz` |
+| macOS Intel         | `adrlint-x86_64-apple-darwin.tar.gz`       |
+| macOS Apple Silicon | `adrlint-aarch64-apple-darwin.tar.gz`      |
+| Windows x86_64      | `adrlint-x86_64-pc-windows-msvc.zip`       |
+
+Checksums are in `adrlint_<version>_checksums.txt` (`sha256sum` format). Download, verify, install:
+
+```bash
+VERSION=0.3.0
+TRIPLE=x86_64-unknown-linux-gnu
+BASE=https://github.com/Goldziher/adrlint/releases/download/v${VERSION}
+
+curl -fsSLO "${BASE}/adrlint-${TRIPLE}.tar.gz"
+curl -fsSLO "${BASE}/adrlint_${VERSION}_checksums.txt"
+grep " adrlint-${TRIPLE}.tar.gz\$" "adrlint_${VERSION}_checksums.txt" | sha256sum -c -   # macOS: shasum -a 256 -c -
+
+tar xzf "adrlint-${TRIPLE}.tar.gz"
+install -m 0755 adrlint /usr/local/bin/adrlint
+```
+
+On Windows, compare `(Get-FileHash adrlint-x86_64-pc-windows-msvc.zip -Algorithm SHA256).Hash` with
+the manifest line, then extract `adrlint.exe` onto your `PATH`. The Windows build targets MSVC only.
 
 <details>
 <summary><b>Build from source</b></summary>
@@ -96,6 +161,8 @@ cargo install --path .
 Requires Rust 1.94+ (the rumdl MSRV).
 
 </details>
+
+Verify the install with `adrlint --version`.
 
 ## Quick start
 
@@ -116,12 +183,142 @@ adrlint new "Use PostgreSQL for event storage"
 adrlint format
 adrlint format --check
 
+# Lock accepted decisions, then verify the manifest in CI
+adrlint lock
+adrlint lock --check
+
 # Lint with GitHub annotations
 adrlint lint --format github
 ```
 
 `adrlint` exits `0` when there are no errors, `1` when a rule reports an error, and `2` when the
 command could not run (bad arguments, unreadable path, invalid configuration).
+
+## Integrations
+
+### GitHub Action
+
+The root `action.yml` is a composite action: it downloads the release binary matching the runner,
+verifies its checksum, caches it by version, OS and architecture, puts it on `PATH` and runs
+`adrlint`. It bundles no JavaScript.
+
+```yaml
+name: ADR lint
+on: [pull_request]
+jobs:
+  adrlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Goldziher/adrlint@v0
+        with:
+          args: "lint --format github"
+```
+
+`@v0` is a floating tag that tracks the newest 0.x release; pin an exact tag (`@v0.3.0`) where
+reproducibility matters. `--format github` emits workflow-command annotations with end positions, so
+findings appear inline on the diff; with plain `lint`, the action registers a problem matcher that
+turns the text output into annotations.
+
+Gate formatting and the lock manifest in the same job, or install only and run adrlint yourself:
+
+```yaml
+- uses: Goldziher/adrlint@v0
+  with:
+    args: "format --check"
+- uses: Goldziher/adrlint@v0
+  with:
+    args: "lock --check"
+
+- uses: Goldziher/adrlint@v0
+  id: adrlint
+  with:
+    install-only: "true"
+- run: adrlint --version # ${{ steps.adrlint.outputs.version }} is also available
+```
+
+**Inputs** (all optional):
+
+| Input               | Default                                      | Description                                                            |
+| ------------------- | -------------------------------------------- | ---------------------------------------------------------------------- |
+| `version`           | the tag the action is pinned to, else latest | adrlint version to install, with or without a leading `v`              |
+| `args`              | `lint`                                       | Arguments passed to adrlint, as one space-separated string             |
+| `working-directory` | `.`                                          | Directory to run adrlint in                                            |
+| `install-only`      | `false`                                      | Install adrlint and put it on `PATH`, but do not run it                |
+| `token`             | `${{ github.token }}`                        | Token used to query the GitHub API and download release assets         |
+| `repository`        | `Goldziher/adrlint`                          | Advanced: override the `owner/repo` release assets are downloaded from |
+
+`@v0` resolves to the newest 0.x release; a full tag resolves to that release. **Outputs:** `version`
+(the version installed, without the leading `v`) and `path` (absolute path to the binary).
+
+`args` is split on whitespace, so it cannot carry a quoted argument containing spaces. Globs are not
+expanded by the shell first; adrlint expands them itself.
+
+### pre-commit
+
+```yaml
+repos:
+  - repo: https://github.com/Goldziher/adrlint
+    rev: v0.3.0
+    hooks:
+      - id: adrlint-lint
+      - id: adrlint
+      - id: adrlint-lock
+```
+
+| Hook           | Runs                   | Files passed                                        |
+| -------------- | ---------------------- | --------------------------------------------------- |
+| `adrlint-lint` | `adrlint lint`         | changed Markdown under an ADR directory             |
+| `adrlint`      | `adrlint format`       | changed Markdown under an ADR directory             |
+| `adrlint-lock` | `adrlint lock --check` | none; runs when any `.md` or `adrlint.lock` changes |
+
+The default `files` pattern covers `adr/`, `adrs/`, `decisions/`, `doc/adr/` and `docs/adr/`, at the
+repository root or nested. Override `files` in your hook entry when the directory is elsewhere. The
+hooks are `language: rust`, so pre-commit builds adrlint from source on first use and needs a Rust
+toolchain (1.94+); for a toolchain-free setup, use a `repo: local` hook that calls an installed
+binary, or the Lefthook configuration below.
+
+A staged ADR is linted with the rest of its log, so a gap or a duplicate number next to it is still
+reported; a staged Markdown file that is not an ADR and sits outside any log, such as an
+`adrs/README.md` index, is skipped.
+
+### Lefthook
+
+```yaml
+pre-commit:
+  commands:
+    adrlint-format:
+      glob:
+        - "{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
+        - "**/{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
+      run: adrlint format {staged_files}
+      stage_fixed: true
+    adrlint-lint:
+      glob:
+        - "{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
+        - "**/{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
+      run: adrlint lint {staged_files}
+    adrlint-lock:
+      glob: ["**/*.md", "adrlint.lock"]
+      run: adrlint lock --check
+```
+
+This uses an installed binary, so any channel above works. `format` and `lint --fix` given only
+files rewrite only those files, never a sibling ADR with unstaged edits.
+
+### Other CI
+
+Install a binary with any channel above, then run the gates. Each exits non-zero on failure and
+writes nothing:
+
+```bash
+adrlint lint --recursive           # structure, numbering, Markdown, locked content
+adrlint format --check             # formatting drift
+adrlint lock --check               # manifest out of date
+```
+
+Add `--format json` for machine-readable output, or `--format github` on GitHub-hosted runners.
+Exit `2` means the run could not complete, so a broken gate never reads as a pass.
 
 ## CLI
 
@@ -144,7 +341,7 @@ Options:
 ### `adrlint lint`
 
 ```text
-adrlint lint [PATH]... [--recursive] [--format text|json|github] [--fix [--force]]
+adrlint lint [PATH]... [-r|--recursive] [--format text|json|github] [--[no-]check-external-links] [--fix [--force]]
 ```
 
 Every command accepts files, directories and glob patterns. A file is checked together with its
@@ -158,29 +355,30 @@ A Markdown file passed explicitly that is not an ADR and sits outside any ADR lo
 an ADR template) is skipped, so a hook can pass every changed file under `adrs/`.
 
 `--recursive` (or `[adr].recursive = true`) adds every descendant directory that directly contains a
-numbered ADR, skipping `.git`, `target`, `node_modules`, hidden directories and whatever the project's
-`.gitignore` files exclude (`.ignore` files and `.gitignore` files above the project are not read).
-Symlinked directories are not followed. A date-prefixed document (`2026-07-01-design.md`) is not an ADR and does not make its
-directory a log. Numbering is still checked per ADR directory, so
-`adrs/team-a/0001.md` and `adrs/team-b/0001.md` are independent logs.
+numbered ADR, skipping `.git`, `target`, `node_modules`, hidden directories and whatever the
+project's `.gitignore` files exclude (`.ignore` files and `.gitignore` files above the project are
+not read). Symlinked directories are not followed. A date-prefixed document (`2026-07-01-design.md`)
+is not an ADR and does not make its directory a log. Numbering is still checked per ADR directory,
+so `adrs/team-a/0001.md` and `adrs/team-b/0001.md` are independent logs.
 
 Each root is walked once per invocation and the directories found are merged, so overlapping roots
 (`adrs` and `adrs/team-a`) lint each log once; a root under a directory another root ignores is still
-walked. Discovery hands the directories it found to the linter instead of walking again, and a directory or
-file the walk cannot read is reported on stderr and skipped rather than aborting the run. Directories
-are listed and files are checked in parallel on every core, each file is read once, and results are
-merged in a fixed order, so the output is byte-identical from run to run.
+walked. A directory or file the walk cannot read is reported on stderr and skipped rather than
+aborting the run. Directories are listed and files are checked in parallel on every core, each file
+is read once, and results are merged in a fixed order, so the output is byte-identical from run to
+run.
 
 ```bash
 adrlint lint adrs/team-a/0002-use-postgresql.md   # that file, with its directory
 adrlint lint 'adrs/*'                             # both namespaces
 adrlint lint --recursive adrs product/adrs        # every nested namespace
+adrlint lint --check-external-links               # also resolve http(s) links
 ```
 
 #### Diagnostics
 
-Every finding has a stable code, a severity, a path, and a 1-based line and column (columns count
-characters). Where the rule knows the extent, it also has an end line and an exclusive end column,
+Every finding has a stable code, a severity, a path (relative to the working directory when the
+file is under it), and a 1-based line and column (columns count characters). Where the rule knows the extent, it also has an end line and an exclusive end column,
 and a short `help` saying what to change. Text output quotes the offending line and underlines it:
 
 ```text
@@ -191,8 +389,8 @@ docs/adr/0001-x.md:19:1: error [MADR07a] Consequences must be a level 3 heading 
    = help: make it a `###` heading inside `## Decision Outcome`
 ```
 
-A closing line on stderr counts the run: `adrlint: 2 errors, 0 warnings in 14 files checked (2 fixable
-with `adrlint lint --fix`)`. `--format json` keeps `code`, `severity`, `message`, `path`, `line` and
+A closing line on stderr counts the run:
+``adrlint: 2 errors, 0 warnings in 14 files checked (2 fixable with `adrlint lint --fix`)``. `--format json` keeps `code`, `severity`, `message`, `path`, `line` and
 `column`, and adds `fixable` plus `end_line`, `end_column` and `help` when known. `--format github`
 adds `endLine` and `endColumn` to each annotation. JSON and GitHub output carry no summary, so they
 stay machine-readable.
@@ -206,32 +404,40 @@ level of `Consequences` and `Confirmation` when a `##` heading directly follows 
 and is one level too shallow (`MADR06`/`MADR07`). It never renames or renumbers a file and never
 touches decision text. Fixable findings are marked `fixable` in JSON and counted in the summary.
 Like `format`, it refuses a fix that changes the canonical content of a locked ADR unless `--force`
-is passed. Files it rewrote are listed on stderr as `fixed <path>`.
+is passed, and exits `1` when it refused. Files it rewrote are listed on stderr as `fixed <path>`.
+
+It plans every file before writing any: if a file cannot be read, or an ADR is a symlink, nothing is
+written. A fix refused on a locked ADR is reported and the other files are still written. A file
+edited after planning is not overwritten, and rewritten files keep their permissions. It rewrites
+only numbered ADRs (never a README or template inside a log), and given only files rewrites only
+those files.
 
 ### `adrlint format`
 
 ```text
-adrlint format [PATH]... [--recursive] [--check] [--force]
+adrlint format [PATH]... [-r|--recursive] [--check] [--force]
 ```
 
-Resolves paths exactly like `lint`, then applies rumdl's fixes to each `.md` file. Only files that
+Resolves paths exactly like `lint`, then applies rumdl's fixes to each numbered ADR. Only files that
 change are written, and each is printed. `--check` writes nothing and exits `1` when a file would
 change, which is the form to run in CI. Formatting is idempotent: a second run changes nothing.
 
 A rumdl fix that rewrites prose (MD034 wrapping a bare URL, for instance) changes the canonical
 content of a locked ADR. `format` refuses that fix, names the file and exits `1`; pass `--force` to
-write it and then `adrlint unlock` before re-locking. Formatting the canonical serializer ignores —
-markers, reflow, trailing spaces — is always written.
+write it and then `adrlint unlock` before re-locking. The check compares the file's canonical content
+before and after the fix, so formatting the serializer ignores — markers, reflow, trailing spaces —
+is always written, even to an ADR that has already drifted from the manifest or under a manifest
+from an older adrlint.
 
 ### `adrlint init`
 
 ```text
-adrlint init [--dir docs/adr] [--start 0|1] [--force]
+adrlint init [--dir DIR] [--start 0|1] [--force]
 ```
 
 Writes `.adrlint.toml`, creates the ADR directory, and adds
-`NNNN-record-architecture-decisions.md` when the directory is empty. `--force` overwrites an existing
-configuration; it never overwrites an ADR.
+`NNNN-record-architecture-decisions.md` when the directory is empty. `--start` defaults to `1`.
+`--force` overwrites an existing configuration; it never overwrites an ADR.
 
 ### `adrlint new`
 
@@ -245,12 +451,12 @@ new ADR starts as `proposed` and is not locked.
 ### `adrlint lock`
 
 ```text
-adrlint lock [PATH]... [--recursive] [--check] [--all]
+adrlint lock [PATH]... [-r|--recursive] [--check] [--all]
 ```
 
 Lints first and refuses to lock a directory with errors. By default it locks `accepted` and
-`rejected` ADRs; `--all` includes drafts. `--check` verifies the manifest without writing and exits
-`1` when it is out of date.
+`rejected` ADRs; `--all` includes proposed and withdrawn ones. `--check` verifies the manifest
+without writing and exits `1` when it is out of date.
 
 ### `adrlint unlock`
 
@@ -263,11 +469,11 @@ trail. The ADR itself is not modified.
 
 ## Rules
 
-Every MADR rule except external link checking (`MADR11`, opt-in and network-dependent) is
-implemented in 0.2.0, along with `ADR50`–`ADR52` and the rumdl `MD###` rules.
+Every MADR rule is implemented, along with `ADR50`–`ADR52` and the rumdl `MD###` rules. `MADR11` is
+opt-in.
 
-Rule IDs are public API. Suppressing or re-severitying one in `.adrlint.toml` must keep working across
-releases; a new check gets a new ID.
+Rule IDs are public API. Suppressing or re-severitying one in `.adrlint.toml` must keep working
+across releases; a new check gets a new ID.
 
 ### Structural integrity (`MADR01`–`MADR08`)
 
@@ -290,13 +496,27 @@ releases; a new check gets a new ID.
 
 ### Links (`MADR11`–`MADR12`)
 
-| ID        | Check                                          |
-| --------- | ---------------------------------------------- |
-| `MADR11`  | External links resolve (opt-in; needs network) |
-| `MADR12a` | Local relative paths exist                     |
-| `MADR12b` | Anchor links match a heading in the document   |
-| `MADR12c` | Root-relative paths exist                      |
-| `MADR12d` | Absolute filesystem paths are not used         |
+| ID        | Check                                                   |
+| --------- | ------------------------------------------------------- |
+| `MADR11`  | External links resolve (opt-in; needs network; warning) |
+| `MADR12a` | Local relative paths exist                              |
+| `MADR12b` | Anchor links match a heading in the document            |
+| `MADR12c` | Root-relative paths exist                               |
+| `MADR12d` | Absolute filesystem paths are not used                  |
+
+Local paths, root-relative paths and anchors are always checked offline; anchors are matched against
+slugs generated from the parsed heading tree. A protocol-relative destination (`//host`) is external.
+
+`MADR11` is off by default because it needs network access and makes a run non-deterministic. Enable
+it per run with `adrlint lint --check-external-links`, or for the project with
+`[lint].check_external_links = true`; `--no-check-external-links` overrides the configuration for one
+run. Its default severity is warning, so it does not fail a build; promote it with
+`[rules] MADR11 = "error"`, or turn it off with `MADR11 = "off"`, which also skips the requests.
+
+Each unique URL (fragment removed) is requested once per run: `HEAD`, then `GET` when the server
+refuses `HEAD`, with a 10 s timeout, at most five redirects and eight requests at a time. `2xx` and
+`3xx` pass, `429` is not reported, and any other status or a network error is a finding at every
+place the URL is cited. Enabling it lets `lint` contact every host your ADRs link to.
 
 ### Metadata (`MADR21`)
 
@@ -312,13 +532,16 @@ releases; a new check gets a new ID.
 
 ### Directory (`MADR41`–`MADR44`)
 
-| ID        | Check                                        |
-| --------- | -------------------------------------------- |
-| `MADR41a` | The first number is `0000` or `0001`         |
-| `MADR41b` | No number is missing between two ADRs        |
-| `MADR42`  | No non-ADR file sits in the ADR directory    |
-| `MADR43`  | No two ADRs share a number                   |
-| `MADR44`  | File names match `NNNN-brief-description.md` |
+| ID        | Check                                          |
+| --------- | ---------------------------------------------- |
+| `MADR41a` | The first number is `[adr].start` (`0` or `1`) |
+| `MADR41b` | No number is missing between two ADRs          |
+| `MADR42`  | No non-ADR file sits in the ADR directory¹     |
+| `MADR43`  | No two ADRs share a number                     |
+| `MADR44`  | File names match `NNNN-brief-description.md`   |
+
+¹ Images (`png`, `jpg`, `jpeg`, `gif`, `svg`, `webp`) that an ADR in the same directory links to are
+allowed.
 
 ### adrlint (`ADR50`–`ADR52`)
 
@@ -331,18 +554,19 @@ releases; a new check gets a new ID.
 ### Markdown (`MD###`)
 
 rumdl's rules are reported verbatim, so a suppression you already know keeps working. Every enabled
-Markdown rule is an error by default, so `lint` gates on Markdown quality without extra configuration;
-`[markdown.rules] MD009 = "warn"` downgrades one rule. Opinionated defaults: line length (`MD013`) and
-inline HTML (`MD033`) are off, because ADR prose is reflowed and decision records legitimately embed
-HTML tables. `MD004` is pinned to `*`, matching `MADR31`, so `format` and `lint` agree.
+Markdown rule is an error by default, so `lint` gates on Markdown quality without extra
+configuration; `[markdown.rules] MD009 = "warn"` downgrades one rule. Opinionated defaults: line
+length (`MD013`) and inline HTML (`MD033`) are off, because ADR prose is reflowed and decision
+records legitimately embed HTML tables. `MD004` is pinned to `*`, matching `MADR31`, so `format` and
+`lint` agree.
 
 ## Configuration
 
 `.adrlint.toml` is discovered from the current directory upward and merged lowest-precedence first:
 the global file at `dirs::config_dir()/adrlint/config.toml`, then each project file from the
-outermost ancestor inward. Each layer sets only the keys it contains, and `[rules]` and
-`[markdown.rules]` merge key by key, so a nested file overrides one rule without discarding the
-rest.
+outermost ancestor inward; `--config PATH` selects a file explicitly. Each layer sets only the keys
+it contains, and `[rules]` and `[markdown.rules]` merge key by key, so a nested file overrides one
+rule without discarding the rest. `adrlint init` writes the full commented template.
 
 ```toml
 [adr]
@@ -352,6 +576,9 @@ paths = ["adrs/*", "product/adrs/*"]
 start = 1 # 0 or 1; used by init and new
 allow_gaps = false # only for imported histories
 recursive = false # search the roots for nested ADR logs, as --recursive does
+
+[lint]
+check_external_links = false # true enables MADR11, as --check-external-links does
 
 [lock]
 enabled = true
@@ -367,31 +594,27 @@ MD033 = "off"
 
 [rules]
 MADR03 = "warn"
+MADR11 = "error" # upgrade external link failures from the default warning
 MADR12c = "error"
 ```
 
 `[adr].paths` is the default input set when no CLI paths are given; `dir` remains the single ADR
 directory used by `init` and `new`. Each layer replaces the path list as a whole.
 
-`[markdown].enabled = false` removes every rumdl finding and every rumdl fix. `[markdown.rules]` takes
-`off`, `warn` or `error`, keyed by rumdl's own code: `off` removes both the finding and the fix, while
-`warn` and `error` set the finding's severity. A rule you do not name keeps its default — the shipped
-ones turn `MD013` and `MD033` off.
+`[markdown].enabled = false` removes every rumdl finding and every rumdl fix. `[markdown.rules]`
+takes `off`, `warn` or `error`, keyed by rumdl's own code: `off` removes both the finding and the
+fix, while `warn` and `error` set the finding's severity. A rule you do not name keeps its default —
+the shipped ones turn `MD013` and `MD033` off.
 
-`[rules]` sets the severity of MADR and ADR findings. A key matches every code it prefixes, ignoring
-case, and the longest key wins: `MADR03 = "warn"` covers `MADR03a` and `MADR03b`, while an explicit
-`MADR03b = "off"` removes only that variant.
+`[rules]` sets the severity of any finding, including rumdl's `MD###`. A key matches every code it
+prefixes, ignoring case, and the longest key wins: `MADR03 = "warn"` covers `MADR03a` and `MADR03b`,
+while an explicit `MADR03b = "off"` removes only that variant.
 
-The `[lint]` table holds opt-in checks that need more than the ADR files:
+`[lint]` holds opt-in checks that need more than the ADR files. `check_external_links = true`
+enables `MADR11`; the `--check-external-links` flag does the same for one run.
 
-```toml
-[lint]
-check_external_links = false
-```
-
-`check_external_links = true` is reserved for `MADR11` and is rejected until the rule exists.
-
-Unknown keys are errors, not silently ignored.
+Unknown configuration keys are errors, not silently ignored. A rule ID in `[rules]` or
+`[markdown.rules]` that matches no adrlint or rumdl code is reported once when `lint` starts.
 
 ## Immutability and locking
 
@@ -436,69 +659,13 @@ Numbers are identities, not labels. adrlint never renumbers and never deletes to
 withdrawn decision keeps its file with `status: withdrawn`; a gap is the signal that history was
 edited. `adrlint new` is the only writer that assigns a number.
 
-## Pre-commit
-
-```yaml
-repos:
-  - repo: https://github.com/Goldziher/adrlint
-    rev: v0.2.1
-    hooks:
-      - id: adrlint-lint
-      - id: adrlint
-      - id: adrlint-lock
-```
-
-The default `files` pattern covers `adr/`, `adrs/`, `decisions/`, `doc/adr/` and `docs/adr/`. Override
-it in your config when the directory is elsewhere.
-
-## Lefthook
-
-```yaml
-pre-commit:
-  commands:
-    adrlint-format:
-      glob:
-        - "{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
-        - "**/{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
-      run: adrlint format {staged_files}
-      stage_fixed: true
-    adrlint-lint:
-      glob:
-        - "{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
-        - "**/{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"
-      run: adrlint lint {staged_files}
-    adrlint-lock:
-      glob: ["**/*.md", "adrlint.lock"]
-      run: adrlint lock --check
-```
-
-A staged ADR is linted with the rest of its log, so a gap or a duplicate number next to it is still
-reported; staged files outside any log, such as an `adrs/README.md` index, are skipped.
-
-## GitHub Action
-
-```yaml
-name: ADR lint
-on: [pull_request]
-jobs:
-  adrlint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: Goldziher/adrlint@v0
-        with:
-          args: "lint --format github"
-```
-
-The action downloads the release binary matching the runner, verifies its checksum, caches it, and
-registers a problem matcher so findings appear inline on the diff.
-
 ## How it works
 
 1. **Discover** the ADR directory and parse each `NNNN-slug.md` into a directory model.
 2. **Parse** Markdown once with pulldown-cmark, retaining byte offsets and front matter.
 3. **Check** MADR structure and numbering from that model; run rumdl on the same source.
-4. **Merge** findings, drop exact duplicates, sort, and report as text, JSON or GitHub annotations.
+4. **Merge** findings, sort, and report as text, JSON or GitHub annotations. Overlapping inputs are
+   merged before linting, so each file is checked once.
 5. **Lock** by hashing a deterministic serialization of the document's content.
 
 Steps 1 to 3 run in parallel across directories and files. `lint` writes nothing unless you pass
@@ -506,14 +673,16 @@ Steps 1 to 3 run in parallel across directories and files. `lint` writes nothing
 
 ### Large repositories
 
-Hardening for monorepos: logs are found at any depth (`services/x/adrs/area/sub/`); `adrs/README.md`
+Hardening for monorepos: logs are found at any depth (`services/x/adrs/area/sub/`), including logs
+of three- or five-digit names (`001-x.md`), which are then reported as `MADR44`; `adrs/README.md`
 indexes, ADR templates and dated design documents (`docs/specs/2026-07-01-x.md`) are not logs;
 `.gitignore`d build output, hidden directories and `node_modules` are never entered; symlinks are not
 followed, so a loop cannot hang a walk; an unreadable file is an `ADR52` finding and an unreadable
 directory a warning; a non-UTF-8 file is an `ADR52` finding; an ADR over 16 MiB is reported instead
-of parsed; CRLF files lint and lock like LF files. `adrlint.lock` keys are project-root-relative paths
-with forward slashes, `lock` finds the same logs as `lint`, and `lock --check` verifies every nested
-log.
+of parsed; CRLF files lint and lock like LF files; control characters in an ADR are never echoed raw
+to the terminal; every file is checked on a worker thread with a 16 MiB stack. `adrlint.lock`
+keys are project-root-relative paths with forward slashes, `lock` finds the same logs as `lint`, and
+`lock --check` verifies every nested log.
 
 ## Roadmap
 
@@ -523,14 +692,14 @@ log.
 - [x] `MADR12`, `MADR21`, `MADR31` link, metadata and style rules
 - [x] `adrlint lock` / `unlock` with semantic hashing
 - [x] rumdl diagnostics and `adrlint format`
-- [ ] External link checking (`MADR11`, opt-in)
-- [x] `[lint]` table (external link checking itself is still to come)
 - [x] Parallel linting, `--fix`, spans and hints in diagnostics
+- [x] External link checking (`MADR11`, opt-in)
 - [ ] 1.0 release
 
 ## Library
 
-The crate is also a library: `Document` and `parse` give you the single Markdown parse,
+The crate is also a library: `adr::parse` (re-exported as `parse_adr`) gives you the single
+Markdown parse and its `Document`,
 `rules::check_document` runs the MADR rules, `markdown::check` and `markdown::format` wrap rumdl,
 `lock::canonical_hash` produces the immutability hash, and `config::load` resolves the layered
 configuration.
@@ -542,7 +711,7 @@ let document = adr::parse(source);
 let findings = rules::check_document(&document, path, root);
 ```
 
-The CLI is a thin layer over those modules; nothing in the library shells out or reads the network.
+The CLI is a thin layer over those modules; nothing in the library shells out.
 
 ## Contributing
 
