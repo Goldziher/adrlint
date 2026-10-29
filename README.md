@@ -37,7 +37,7 @@ adrlint is built to check all four in one run, from one parse, with one exit cod
 
 ## Status
 
-adrlint is at **0.1.0** and under active construction. The implemented surface is:
+adrlint is at **0.2.0** and under active construction. The implemented surface is:
 
 - `adrlint lint` — `MADR01`–`MADR08` structural rules, `MADR12`/`MADR21`/`MADR31` integrity and
   style rules, `MADR41`–`MADR44` directory rules, `ADR50`–`ADR52` immutability and readability
@@ -216,7 +216,7 @@ trail. The ADR itself is not modified.
 ## Rules
 
 Every MADR rule except external link checking (`MADR11`, opt-in and network-dependent) is
-implemented in 0.1.0, along with `ADR50`–`ADR52` and the rumdl `MD###` rules.
+implemented in 0.2.0, along with `ADR50`–`ADR52` and the rumdl `MD###` rules.
 
 Rule IDs are public API. Suppressing or re-severitying one in `.adrlint.toml` must keep working across
 releases; a new check gets a new ID.
@@ -390,7 +390,7 @@ edited. `adrlint new` is the only writer that assigns a number.
 ```yaml
 repos:
   - repo: https://github.com/Goldziher/adrlint
-    rev: v0.1.0
+    rev: v0.2.0
     hooks:
       - id: adrlint-lint
       - id: adrlint

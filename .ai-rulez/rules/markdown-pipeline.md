@@ -55,7 +55,7 @@ download.
 
 ### Links
 
-External link checking (`MADR11`) is not implemented in 0.1.0 and `[lint]` is rejected as an unknown
+External link checking (`MADR11`) is not implemented in 0.2.0 and `[lint]` is rejected as an unknown
 table. It is opt-in by design: it needs network access and makes a lint run non-deterministic. Local
 paths, root-relative paths and anchor links are always checked offline; anchors are matched against
 slugs generated from the parsed heading tree, not guessed. A protocol-relative destination (`//host`)

@@ -27,7 +27,7 @@ The tool is opinionated in four ways:
 
 ### Source Code (`src/`)
 
-The 0.1.0 release implements every module in the layout below. `markdown/` links rumdl in-process;
+The 0.2.0 release implements every module in the layout below. `markdown/` links rumdl in-process;
 `adr/` owns the single parse; `rules/` is split by family; `lock.rs` owns content hashing.
 
 - `main.rs` — entry point, command dispatch, atomic writes and exit codes
