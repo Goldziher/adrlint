@@ -22,6 +22,13 @@ All notable changes to this project are documented in this file.
   README documents the supersede flow and the recommended `status: superseded` plus
   `superseded-by: "NNNN"` front matter.
 
+### Fixed
+
+- `MADR04` matched its rationale keywords anywhere in the text, so `as` inside `basemind` or
+  `reason` inside `treason` counted as a rationale and almost any chosen-option paragraph passed.
+  Keywords now match whole words only, and only after the chosen option, so a keyword earlier in the
+  paragraph no longer hides a rationale that follows it.
+
 ## 0.3.0 - 2026-10-29
 
 ### Added

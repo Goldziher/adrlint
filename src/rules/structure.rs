@@ -189,8 +189,7 @@ fn check_decision_outcome(document: &Document, path: &Path, diagnostics: &mut Ve
     }
 
     let chosen_at = keyword_index(&chosen.text, &CHOSEN_OPTION).unwrap_or(0);
-    let rationale = keyword_index(&chosen.text, &RATIONALE);
-    if rationale.is_none_or(|rationale| rationale < chosen_at) {
+    if keyword_index_from(&chosen.text, &RATIONALE, chosen_at).is_none() {
         diagnostics.push(Diagnostic::error(
             "MADR04",
             path,
@@ -407,9 +406,26 @@ fn section_content(document: &Document, index: usize) -> Vec<Content> {
 }
 
 /// The index of the first keyword found in `text`, in keyword order, as madrlint does it.
-fn keyword_index(text: &str, keywords: &[&str]) -> Option<usize> {
+/// The byte offset of the first keyword in `text` at or after `from`, matched case-insensitively and
+/// as a whole word, so `as` is not found inside `basemind`.
+fn keyword_index_from(text: &str, keywords: &[&str], from: usize) -> Option<usize> {
     let text = text.to_lowercase();
-    keywords.iter().find_map(|keyword| text.find(keyword))
+    let is_word = |character: char| character.is_alphanumeric();
+    keywords
+        .iter()
+        .filter_map(|keyword| {
+            text.match_indices(keyword).map(|(start, _)| start).find(|&start| {
+                let end = start + keyword.len();
+                start >= from
+                    && !text[..start].chars().next_back().is_some_and(is_word)
+                    && !text[end..].chars().next().is_some_and(is_word)
+            })
+        })
+        .min()
+}
+
+fn keyword_index(text: &str, keywords: &[&str]) -> Option<usize> {
+    keyword_index_from(text, keywords, 0)
 }
 
 fn block_start(block: &Block) -> usize {
@@ -549,6 +565,28 @@ Chosen option: \"Rust\", because it is fast.
             );
             assert_eq!(findings(&source), [], "{rationale} should be accepted");
         }
+    }
+
+    #[test]
+    fn should_not_take_a_keyword_inside_a_word_as_a_rationale() {
+        for lead in [
+            "Chosen option: \"basemind\", which indexes the code.",
+            "Chosen option: \"Rust\", treasonably fast.",
+            "Chosen option: \"Rust\", unjustifiably asserted.",
+            "Chosen option: \"Rust\", becausewe like it.",
+        ] {
+            let source = VALID.replace("Chosen option: \"Rust\", because it is fast.", lead);
+            assert_eq!(findings(&source), [("MADR04", 14)], "{lead}");
+        }
+    }
+
+    #[test]
+    fn should_find_the_rationale_after_the_chosen_option() {
+        let source = VALID.replace(
+            "Chosen option: \"Rust\", because it is fast.",
+            "The rationale follows. Chosen option: \"Rust\", because it is fast.",
+        );
+        assert_eq!(findings(&source), []);
     }
 
     #[test]

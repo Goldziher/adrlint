@@ -511,6 +511,10 @@ across releases; a new check gets a new ID.
 | `MADR08a` | The title is at the top of the file                          |
 | `MADR08b` | Level-2 sections appear in template order                    |
 
+`MADR04` looks for `because`, `as`, `rationale`, `reason`, `reasoning`, `justification`,
+`motivation` or `motivated` as a whole word after the chosen option, so `as` inside `basemind` is not
+a rationale.
+
 ### Links (`MADR11`–`MADR12`)
 
 | ID        | Check                                                   |
