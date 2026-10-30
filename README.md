@@ -592,6 +592,11 @@ outermost ancestor inward; `--config PATH` selects a file explicitly. Each layer
 it contains, and `[rules]` and `[markdown.rules]` merge key by key, so a nested file overrides one
 rule without discarding the rest. `adrlint init` writes the full commented template.
 
+When `lint`, `format` or `lock` is given paths, the walk starts at the nearest project file above
+them instead of the current directory, so `adrlint lint repo-a/adrs` run from a parent directory
+uses `repo-a/.adrlint.toml` and `repo-a/adrlint.lock`. Paths from two different projects in one run
+are an error (exit `2`); run adrlint once per project.
+
 ```toml
 [adr]
 dir = "docs/adr"

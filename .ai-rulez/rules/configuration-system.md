@@ -15,8 +15,8 @@ Layered TOML defined in `src/config.rs` and resolved by `config::load`.
 ### Precedence (highest to lowest)
 
 1. **CLI flags.**
-2. **Project config**, found by walking up from the current directory: the nearest first, then each
-   ancestor outward. A nested config overrides only the keys it contains.
+2. **Project config**, found by walking up from the CLI paths, else the current directory: the
+   nearest first, then each ancestor outward. A nested config overrides only the keys it contains.
 3. **Global config** at `dirs::config_dir()/adrlint/config.toml`.
 4. **Built-in defaults.**
 

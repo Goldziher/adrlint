@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.9.2'
 scope = 'all'
-tree = 'sha256:932c0a526f9b972ebb1b4876e1bd1a0486ef3c677cf999aef2ad6bf46e9a3e0d'
+tree = 'sha256:2e4a77cab6f562339dee35e0eaab6a5fdbc9ca92a6ac3c0fb5a47c91cd48f360'
 
 [[served]]
 name = 'build'
@@ -172,7 +172,7 @@ digest = 'sha256:c78115a5173a18ebceae477cb22e7f0b05e90298c29932a85a6c4c215ddb71e
 kind = 'rule'
 id = 'configuration-system'
 path = 'rules/configuration-system.md'
-digest = 'sha256:38028ec4fa76c425f8314e13971a65a3f75c23777d033ad0500537b61303e438'
+digest = 'sha256:049b010ce9fba6a9fa3f0b03a00f31573774911ffb0557a4771704d713da1b06'
 
 [[item]]
 kind = 'rule'

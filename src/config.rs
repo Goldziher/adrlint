@@ -305,8 +305,18 @@ pub struct Loaded {
 /// Loads the configuration with the documented precedence, reading the global file from
 /// `dirs::config_dir()`.
 pub fn load(explicit: Option<&Path>) -> Result<Loaded> {
+    load_for(explicit, &[])
+}
+
+/// Loads the configuration for a run over `paths`, as [`load`] does, but starting the project-file
+/// walk at the nearest project file above the paths rather than at the current directory.
+///
+/// A log in a nested project (`repo-a/adrs` linted from a polyrepo root) is then checked with
+/// `repo-a/.adrlint.toml`. Paths that belong to different projects are an error: the start number,
+/// rules and lock manifest are per project, so one run cannot apply two of them.
+pub fn load_for(explicit: Option<&Path>, paths: &[PathBuf]) -> Result<Loaded> {
     let global = dirs::config_dir().map(|directory| directory.join("adrlint").join("config.toml"));
-    load_with_global(explicit, global.as_deref())
+    load_with_global_for(explicit, global.as_deref(), paths)
 }
 
 /// Loads the configuration with an explicit global path.
@@ -317,6 +327,11 @@ pub fn load(explicit: Option<&Path>) -> Result<Loaded> {
 /// Precedence, highest first: the explicit `--config` file, the nearest project file and its
 /// ancestors outward, `global`, then built-in defaults.
 pub fn load_with_global(explicit: Option<&Path>, global: Option<&Path>) -> Result<Loaded> {
+    load_with_global_for(explicit, global, &[])
+}
+
+/// The testable form of [`load_for`]: [`load_with_global`] with the walk starting above `paths`.
+pub fn load_with_global_for(explicit: Option<&Path>, global: Option<&Path>, paths: &[PathBuf]) -> Result<Loaded> {
     if let Some(path) = explicit {
         let root = path
             .parent()
@@ -337,6 +352,7 @@ pub fn load_with_global(explicit: Option<&Path>, global: Option<&Path>) -> Resul
     }
 
     let cwd = std::env::current_dir().context("reading the current directory")?;
+    let base = project_base(&cwd, paths)?.unwrap_or(cwd);
     let mut config = Config::default();
     if let Some(global) = global {
         apply_file(&mut config, global, false)?;
@@ -345,7 +361,7 @@ pub fn load_with_global(explicit: Option<&Path>, global: Option<&Path>) -> Resul
     // Nearest first. One file per directory: the preferred name wins outright and the deprecated
     // fallback is not merged in.
     let mut project = Vec::new();
-    for ancestor in cwd.ancestors() {
+    for ancestor in base.ancestors() {
         for name in CONFIG_FILE_NAMES {
             let candidate = ancestor.join(name);
             if candidate.is_file() {
@@ -364,7 +380,7 @@ pub fn load_with_global(explicit: Option<&Path>, global: Option<&Path>) -> Resul
         .as_ref()
         .and_then(|path| path.parent())
         .map(Path::to_path_buf)
-        .unwrap_or(cwd);
+        .unwrap_or(base);
     validate(&config).with_context(|| match &path {
         Some(path) => format!("invalid configuration in {}", path.display()),
         None => "invalid configuration".to_owned(),
@@ -391,6 +407,36 @@ fn apply_file(config: &mut Config, path: &Path, required: bool) -> Result<()> {
 }
 
 /// Canonicalises a root when possible; a root that does not exist is kept as given.
+/// The directory of the nearest project file above every path in `paths`, or `None` when no path
+/// has one (or none is given), so the walk starts at the current directory as before.
+fn project_base(cwd: &Path, paths: &[PathBuf]) -> Result<Option<PathBuf>> {
+    let mut base: Option<Option<PathBuf>> = None;
+    for path in paths {
+        let path = cwd.join(path);
+        let nearest = path
+            .ancestors()
+            .find(|directory| CONFIG_FILE_NAMES.iter().any(|name| directory.join(name).is_file()))
+            .map(|directory| absolute(directory.to_path_buf()));
+        match &base {
+            None => base = Some(nearest),
+            Some(previous) if *previous == nearest => {}
+            Some(previous) => {
+                let describe = |project: &Option<PathBuf>| {
+                    project
+                        .as_ref()
+                        .map_or_else(|| "no configuration".to_owned(), |path| path.display().to_string())
+                };
+                bail!(
+                    "the paths belong to different adrlint projects ({} and {}); run adrlint once per project",
+                    describe(previous),
+                    describe(&nearest)
+                );
+            }
+        }
+    }
+    Ok(base.flatten())
+}
+
 fn absolute(path: PathBuf) -> PathBuf {
     fs::canonicalize(&path).unwrap_or(path)
 }

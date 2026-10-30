@@ -51,7 +51,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
 }
 
 fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitCode> {
-    let loaded = config::load(config_path)?;
+    let loaded = config::load_for(config_path, &args.paths)?;
     report_unknown_rule_keys(&loaded);
     let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
     let named = named_files(&args.paths);
@@ -99,7 +99,7 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
 /// for instance) is refused unless `--force` is passed. Formatting the canonical serializer ignores
 /// is still written: a reflow or a marker change never breaks a lock.
 fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCode> {
-    let loaded = config::load(config_path)?;
+    let loaded = config::load_for(config_path, &args.paths)?;
     let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
     let named = named_files(&args.paths);
     let mode = FixMode {
@@ -904,7 +904,7 @@ fn truncate_slug(slug: &str) -> &str {
 }
 
 fn lock_command(config_path: Option<&Path>, args: LockArgs, color: bool) -> Result<ExitCode> {
-    let loaded = config::load(config_path)?;
+    let loaded = config::load_for(config_path, &args.paths)?;
     if !loaded.config.lock.enabled {
         bail!("locking is disabled in the configuration; set lock.enabled = true to use it");
     }
