@@ -1,0 +1,3 @@
+# Fixtures are linter input: check them out byte for byte, so a CRLF checkout cannot change
+# what a test reads, and the CRLF corpus fixture keeps its line endings.
+fixtures/** -text

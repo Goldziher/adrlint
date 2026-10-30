@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- The test suite passes on Windows again. A checkout with `core.autocrlf` turned the test fixtures'
+  line endings into CRLF, which `lint --fix` and `format` correctly preserve, so three tests looking
+  for LF headings failed; `.gitattributes` now checks `fixtures/` out byte for byte, and a new test
+  covers fixing a CRLF ADR named by a hook on every platform. `adrlint` itself was not affected.
+
 ## 0.4.0 - 2026-10-30
 
 ### Added

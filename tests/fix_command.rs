@@ -261,3 +261,34 @@ fn should_keep_the_permissions_of_a_fixed_file() {
     let mode = fs::metadata(&path).expect("reading metadata").permissions().mode() & 0o777;
     assert_eq!(mode, 0o640);
 }
+
+#[test]
+fn should_check_out_the_fixture_byte_for_byte() {
+    assert!(
+        !ADR.contains('\r'),
+        "the fixture gained CRLF line endings on checkout; `.gitattributes` must keep fixtures/ -text"
+    );
+}
+
+#[test]
+fn should_fix_a_crlf_adr_and_keep_its_line_endings() {
+    let crlf = misplaced().replace('\n', "\r\n");
+    let (directory, first) = project(&crlf);
+    let second = directory.path().join("docs/adr/0002-y.md");
+    fs::write(&second, &crlf).expect("writing the second ADR");
+
+    let output = run(&directory, &["format"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(
+        read(&second).contains("\r\n## Consequences\r\n"),
+        "format leaves headings alone"
+    );
+
+    let output = run(&directory, &["lint", "--fix", "docs/adr/0002-y.md"]);
+    assert_ne!(output.status.code(), Some(2), "{}", stderr(&output));
+    let fixed = read(&second);
+    assert!(fixed.contains("\r\n### Consequences\r\n"), "{fixed:?}");
+    assert!(fixed.contains("\r\n### Confirmation\r\n"), "{fixed:?}");
+    assert_eq!(fixed.matches('\n').count(), fixed.matches("\r\n").count(), "{fixed:?}");
+    assert_eq!(read(&first), crlf, "a sibling the hook did not name is left alone");
+}
