@@ -193,8 +193,9 @@ fn check_decision_outcome(document: &Document, path: &Path, diagnostics: &mut Ve
         ));
     }
 
-    let chosen_at = keyword_index(&chosen.text, &CHOSEN_OPTION).unwrap_or(0);
-    if keyword_index_from(&chosen.text, &RATIONALE, chosen_at).is_none() {
+    let text = chosen.text.to_lowercase();
+    let rationale_from = keyword_span(&text, &CHOSEN_OPTION, 0).map_or(0, |(_, end)| option_end(&text, end));
+    if keyword_span(&text, &RATIONALE, rationale_from).is_none() {
         diagnostics.push(Diagnostic::error(
             "MADR04",
             path,
@@ -411,26 +412,42 @@ fn section_content(document: &Document, index: usize) -> Vec<Content> {
 }
 
 /// The index of the first keyword found in `text`, in keyword order, as madrlint does it.
-/// The byte offset of the first keyword in `text` at or after `from`, matched case-insensitively and
-/// as a whole word, so `as` is not found inside `basemind`.
-fn keyword_index_from(text: &str, keywords: &[&str], from: usize) -> Option<usize> {
-    let text = text.to_lowercase();
+/// The byte span of the first keyword in `text` (already lowercased) at or after `from`, matched as
+/// a whole word, so `as` is not found inside `basemind`.
+fn keyword_span(text: &str, keywords: &[&str], from: usize) -> Option<(usize, usize)> {
     let is_word = |character: char| character.is_alphanumeric();
     keywords
         .iter()
         .filter_map(|keyword| {
-            text.match_indices(keyword).map(|(start, _)| start).find(|&start| {
-                let end = start + keyword.len();
-                start >= from
-                    && !text[..start].chars().next_back().is_some_and(is_word)
-                    && !text[end..].chars().next().is_some_and(is_word)
-            })
+            text.match_indices(keyword)
+                .map(|(start, _)| (start, start + keyword.len()))
+                .find(|&(start, end)| {
+                    start >= from
+                        && !text[..start].chars().next_back().is_some_and(is_word)
+                        && !text[end..].chars().next().is_some_and(is_word)
+                })
         })
         .min()
 }
 
 fn keyword_index(text: &str, keywords: &[&str]) -> Option<usize> {
-    keyword_index_from(text, keywords, 0)
+    keyword_span(&text.to_lowercase(), keywords, 0).map(|(start, _)| start)
+}
+
+/// Where the option named after the chosen-option keyword ends, so a keyword inside the option's
+/// name is not read as its rationale: after the closing quote when the option is quoted
+/// (`Chosen option: "…"`), else after the first comma, else at the end of the keyword
+/// (`keyword_end`). A quote later in the sentence belongs to the rationale, not the option.
+fn option_end(text: &str, keyword_end: usize) -> usize {
+    let rest = &text[keyword_end..];
+    let open = rest.len() - rest.trim_start_matches([':', ' ', '\t']).len();
+    let quoted = rest[open..]
+        .strip_prefix('"')
+        .and_then(|name| name.find('"'))
+        .map(|close| keyword_end + open + 1 + close + 1);
+    quoted
+        .or_else(|| rest.find(',').map(|comma| keyword_end + comma + 1))
+        .unwrap_or(keyword_end)
 }
 
 fn block_start(block: &Block) -> usize {
@@ -592,6 +609,25 @@ Chosen option: \"Rust\", because it is fast.
             "Chosen option: \"Rust\". Rationales: speed and safety.",
             "Chosen option: \"Rust\". Justifications: speed and safety.",
             "Chosen option: \"Rust\". Motivations: speed and safety.",
+        ] {
+            let source = VALID.replace("Chosen option: \"Rust\", because it is fast.", lead);
+            assert_eq!(findings(&source), [], "{lead}");
+        }
+    }
+
+    #[test]
+    fn should_not_take_a_keyword_in_the_option_name_as_a_rationale() {
+        for lead in [
+            "Chosen option: \"Use X as Y\".",
+            "Chosen option: \"Reason about it\".",
+            "Chosen option: Redis as a cache, deployed once.",
+        ] {
+            let source = VALID.replace("Chosen option: \"Rust\", because it is fast.", lead);
+            assert_eq!(findings(&source), [("MADR04", 14)], "{lead}");
+        }
+        for lead in [
+            "Chosen option: \"Use X as Y\", because it is fast.",
+            "Chosen option: Rust, because it is \"fast\".",
         ] {
             let source = VALID.replace("Chosen option: \"Rust\", because it is fast.", lead);
             assert_eq!(findings(&source), [], "{lead}");

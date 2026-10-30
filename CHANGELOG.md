@@ -40,6 +40,9 @@ All notable changes to this project are documented in this file.
   `justifications` and `motivations` are accepted. The chosen-option keywords (`Chosen option`,
   `Chosen alternative`, `Selected option`) now also match as whole words, for `MADR03a` and
   `MADR03b` as well.
+- `MADR04` searched the option's own name for a rationale, so `Chosen option: "Use X as Y".` passed.
+  The search now starts after the option: after its closing quote when it is quoted, else after the
+  first comma.
 
 ## 0.3.0 - 2026-10-29
 

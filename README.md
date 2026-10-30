@@ -513,7 +513,8 @@ across releases; a new check gets a new ID.
 
 `MADR04` looks for `because`, `as`, `rationale(s)`, `reason(s)`, `reasoning`, `justification(s)`,
 `motivation(s)` or `motivated` as a whole word after the chosen option, so `as` inside `basemind` is
-not a rationale.
+not a rationale. The option itself is skipped: the search starts after its closing quote, or after
+the first comma when it is not quoted.
 
 ### Links (`MADR11`–`MADR12`)
 
