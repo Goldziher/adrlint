@@ -146,6 +146,38 @@ fn should_not_lock_a_superseded_by_status_unless_superseded_is_locked() {
 }
 
 #[test]
+fn should_pass_a_check_with_no_lock_and_nothing_to_lock() {
+    let (directory, adr) = scaffold();
+    let original = fs::read_to_string(&adr).unwrap();
+    set_status(&adr, &original, "proposed");
+
+    let output = run(adrlint().current_dir(directory.path()).args(["lock", "--check"]));
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(stdout(&output).contains("nothing to lock"), "{}", stdout(&output));
+    assert!(
+        !directory.path().join("adrlint.lock").exists(),
+        "a check never writes the manifest"
+    );
+
+    let output = run(adrlint().current_dir(directory.path()).arg("lock"));
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "locking nothing is still an error: {}",
+        stdout(&output)
+    );
+}
+
+#[test]
+fn should_fail_a_check_when_a_lockable_adr_has_no_lock() {
+    let (directory, _) = scaffold();
+
+    let output = run(adrlint().current_dir(directory.path()).args(["lock", "--check"]));
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert!(!directory.path().join("adrlint.lock").exists());
+}
+
+#[test]
 fn should_report_a_locked_adr_that_disappears() {
     let (directory, adr) = scaffold();
     let key = manifest_key(directory.path(), &adr);

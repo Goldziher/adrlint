@@ -970,6 +970,14 @@ fn lock_command(config_path: Option<&Path>, args: LockArgs, color: bool) -> Resu
     }
 
     if locked == 0 && existing.adrs.is_empty() {
+        // A log with no manifest has not opted in yet; an always-run hook must not fail on it.
+        if args.check && !manifest_path.exists() {
+            println!(
+                "no ADRs matched lock.statuses and {} does not exist; nothing to lock",
+                manifest_path.display()
+            );
+            return Ok(ExitCode::SUCCESS);
+        }
         bail!("no ADRs matched lock.statuses; pass --all to lock every ADR");
     }
 

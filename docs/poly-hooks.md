@@ -56,8 +56,8 @@ the rest of its log, so a gap or duplicate number next to it is still reported.
 
 `adrlint-lock-check` always runs and receives no filenames, because poly leaves deleted files out of
 the staged list: a commit that only deletes a locked ADR or edits `adrlint.lock` must still be
-checked. It exits `2` while the repository has no `adrlint.lock` and no ADR with a locked status, so
-select it once the log is locked.
+checked. Before the log is locked, with no `adrlint.lock` and no ADR in a locked status, it passes
+with "nothing to lock", so it is safe to select from the start.
 
 ## Use a local source
 

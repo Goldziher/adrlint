@@ -661,7 +661,9 @@ blake3 = "…"
 - The hash is over a **semantic serialization**, not the bytes on disk. Formatting, line endings,
   list markers, fence styles and paragraph reflow do not change it; a changed word, heading, link
   target or code body does. A formatter fix that rewrites prose still needs an unlock.
-- `adrlint lock --check` is the strict CI form and exits `1` when the manifest is out of date.
+- `adrlint lock --check` is the strict CI form and exits `1` when the manifest is out of date,
+  including when an ADR in a locked status exists but `adrlint.lock` does not. With no manifest and
+  nothing to lock it exits `0` ("nothing to lock"), so the gate can be enabled before the first lock.
 - The `canonical` field versions that serializer, so a tool upgrade warns instead of failing every
   consumer's build. `lint` prints that warning once and verifies nothing until the manifest is
   refreshed with `adrlint lock --all`.

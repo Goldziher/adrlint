@@ -24,6 +24,10 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- `adrlint lock --check` exited `2` in a repository with no `adrlint.lock` and no ADR in a locked
+  status, so CI and the always-run hook failed before a log was ever locked. It now exits `0` with
+  "nothing to lock". It still exits `1` when a lockable ADR exists but the manifest does not, and
+  plain `adrlint lock` still refuses to lock nothing.
 - `MADR04` matched its rationale keywords anywhere in the text, so `as` inside `basemind` or
   `reason` inside `treason` counted as a rationale and almost any chosen-option paragraph passed.
   Keywords now match whole words only, and only after the chosen option, so a keyword earlier in the
