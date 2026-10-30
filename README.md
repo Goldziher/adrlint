@@ -565,8 +565,9 @@ place the URL is cited. Enabling it lets `lint` contact every host your ADRs lin
 ¹ Images (`png`, `jpg`, `jpeg`, `gif`, `svg`, `webp`) that an ADR in the same directory links to are
 allowed.
 
-An index, `README.md` or `index.md` in any letter case, is not part of the log: it is neither linted
-as an ADR nor reported as a foreign file, so a log can carry its own table of contents.
+An index, `README.md` or `index.md` in any letter case (`README.MD` too), is not part of the log: it
+is neither linted as an ADR nor reported as a foreign file, so a log can carry its own table of
+contents. An image the index links to is an allowed asset, like one an ADR links to.
 
 ### adrlint (`ADR50`–`ADR52`)
 

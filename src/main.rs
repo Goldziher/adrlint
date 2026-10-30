@@ -315,6 +315,23 @@ fn scan_all(directories: &[PathBuf]) -> Result<Vec<discovery::Directory>> {
     .collect()
 }
 
+/// Adds the images each log's index links to: an index is not linted, but an image only it links to
+/// is still one of the log's assets, not a foreign file.
+fn add_index_images(
+    loaded: &config::Loaded,
+    scanned: &[discovery::Directory],
+    images: &mut std::collections::BTreeMap<PathBuf, BTreeSet<PathBuf>>,
+) {
+    for directory in scanned {
+        for index in &directory.indexes {
+            if let Ok(source) = read_adr(index) {
+                let referenced = rules::referenced_images(&adr::parse(&source), index, &loaded.root);
+                images.entry(directory.path.clone()).or_default().extend(referenced);
+            }
+        }
+    }
+}
+
 /// Lints every ADR in `directories`.
 ///
 /// The directories are listed and the files checked in parallel; each file is read exactly once for
@@ -352,6 +369,7 @@ fn collect(
             images.entry(parent.to_path_buf()).or_default().extend(checked.images);
         }
     }
+    add_index_images(loaded, &scanned, &mut images);
     let none = BTreeSet::new();
     for directory in &scanned {
         let referenced = images.get(&directory.path).unwrap_or(&none);

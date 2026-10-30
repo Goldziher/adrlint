@@ -15,12 +15,14 @@ pub struct Directory {
     pub path: PathBuf,
     pub adrs: Vec<AdrFile>,
     pub foreign: Vec<PathBuf>,
+    /// The log's index files, which are not ADRs but may reference the log's images.
+    pub indexes: Vec<PathBuf>,
 }
 
 /// Lists one directory: its Markdown files as ADR candidates and everything else as foreign files.
 ///
 /// An index (`README.md` or `index.md`, see [`is_index`]) is neither: a log's table of contents is
-/// not a decision, so it is left out of the log entirely.
+/// not a decision, so it is kept apart in `indexes` and never linted.
 ///
 /// Entry types come from the directory read itself, so only a symlink costs an extra `stat`.
 pub fn scan(dir: &Path) -> io::Result<Directory> {
@@ -40,6 +42,7 @@ pub fn scan(dir: &Path) -> io::Result<Directory> {
 
     let mut adrs = Vec::new();
     let mut foreign = Vec::new();
+    let mut indexes = Vec::new();
     for (path, is_dir) in entries {
         if is_dir {
             continue;
@@ -48,11 +51,12 @@ pub fn scan(dir: &Path) -> io::Result<Directory> {
             foreign.push(path);
             continue;
         };
-        if !name.ends_with(".md") {
-            foreign.push(path);
+        if is_index(name) {
+            indexes.push(path);
             continue;
         }
-        if is_index(name) {
+        if !name.ends_with(".md") {
+            foreign.push(path);
             continue;
         }
         adrs.push(AdrFile {
@@ -67,10 +71,12 @@ pub fn scan(dir: &Path) -> io::Result<Directory> {
         path: dir.to_path_buf(),
         adrs,
         foreign,
+        indexes,
     })
 }
 
-/// Whether a file name is a directory index, `README.md` or `index.md` in any letter case.
+/// Whether a file name is a directory index, `README.md` or `index.md`, ignoring letter case in the
+/// name and the extension.
 pub fn is_index(name: &str) -> bool {
     ["README.md", "index.md"]
         .iter()
@@ -190,11 +196,21 @@ mod tests {
         let names: Vec<&str> = scanned.adrs.iter().map(|file| file.name.as_str()).collect();
         assert_eq!(names, ["0001-use-rust.md", "notes.md"]);
         assert!(scanned.foreign.is_empty());
+        let indexes: Vec<_> = scanned.indexes.iter().filter_map(|path| path.file_name()).collect();
+        assert_eq!(indexes, ["README.md", "index.md"]);
     }
 
     #[test]
     fn should_recognise_an_index_in_any_case() {
-        for name in ["README.md", "readme.md", "Readme.md", "index.md", "INDEX.md"] {
+        for name in [
+            "README.md",
+            "readme.md",
+            "Readme.md",
+            "README.MD",
+            "index.md",
+            "INDEX.md",
+            "index.MD",
+        ] {
             assert!(is_index(name), "{name}");
         }
         for name in ["README.txt", "0001-readme.md", "index.markdown", "notes.md"] {

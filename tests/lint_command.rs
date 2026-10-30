@@ -160,3 +160,55 @@ fn should_allow_an_image_an_adr_references_but_report_an_unreferenced_one() {
         String::from_utf8_lossy(&output.stdout)
     );
 }
+
+#[test]
+fn should_allow_an_image_only_the_log_index_references() {
+    let directory = TempDir::new().expect("temporary directory");
+    let log = directory.path().join("docs/adr");
+    std::fs::create_dir_all(&log).expect("creating the log");
+    std::fs::write(
+        log.join("0001-record-architecture-decisions.md"),
+        include_str!("../fixtures/adr/valid/0001-record-architecture-decisions.md"),
+    )
+    .expect("writing the ADR");
+    std::fs::write(log.join("README.md"), "# Decisions\n\n![Overview](overview.png)\n").expect("writing the index");
+    for image in ["overview.png", "unused.png"] {
+        std::fs::write(log.join(image), b"asset").expect("writing an asset");
+    }
+
+    let output = run(adrlint().arg("lint").arg("--format").arg("json").arg(&log));
+    let diagnostics: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).expect("parsing JSON");
+    let reported = diagnostics
+        .iter()
+        .map(|diagnostic| {
+            let name = Path::new(diagnostic["path"].as_str().expect("a path"))
+                .file_name()
+                .expect("a file name")
+                .to_string_lossy()
+                .into_owned();
+            (diagnostic["code"].as_str().expect("a code").to_owned(), name)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        reported,
+        [("MADR42".to_owned(), "unused.png".to_owned())],
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn should_leave_an_upper_case_index_extension_out_of_the_log() {
+    let directory = TempDir::new().expect("temporary directory");
+    let log = directory.path().join("docs/adr");
+    std::fs::create_dir_all(&log).expect("creating the log");
+    std::fs::write(
+        log.join("0001-record-architecture-decisions.md"),
+        include_str!("../fixtures/adr/valid/0001-record-architecture-decisions.md"),
+    )
+    .expect("writing the ADR");
+    std::fs::write(log.join("README.MD"), "# Decisions\n").expect("writing the index");
+
+    let output = run(adrlint().arg("lint").arg("--format").arg("json").arg(&log));
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+}

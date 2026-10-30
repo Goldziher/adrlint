@@ -16,7 +16,10 @@ All notable changes to this project are documented in this file.
 
 - An index inside an ADR directory, `README.md` or `index.md` in any letter case, is no longer
   linted as an ADR (`MADR01`, `MADR44`): it is left out of the log, so a log can carry its own table
-  of contents. Any other Markdown file without an ADR name is still reported.
+  of contents. Any other Markdown file without an ADR name is still reported. The name and the
+  extension are compared case-insensitively, so `README.MD` counts too, and an image linked only
+  from the index is an allowed asset rather than `MADR42`. The library's `discovery::Directory`
+  gains an `indexes` field listing them.
 - `[lock].statuses` matches MADR's `superseded by ADR-0123` status form as `superseded`, so a
   replaced decision written that way can be locked; a list that names the full status still matches
   it as written, and the lock entry keeps the status as written. The README documents the supersede

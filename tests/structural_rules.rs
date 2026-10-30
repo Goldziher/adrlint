@@ -104,6 +104,7 @@ fn directory(name: &str) -> Directory {
         path: PathBuf::from("docs/adr"),
         adrs: vec![adr_file(name)],
         foreign: Vec::new(),
+        indexes: Vec::new(),
     }
 }
 

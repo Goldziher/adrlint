@@ -269,6 +269,7 @@ mod tests {
             path: PathBuf::from("docs/adr"),
             adrs: names.iter().map(|name| file(name)).collect(),
             foreign: Vec::new(),
+            indexes: Vec::new(),
         }
     }
 
