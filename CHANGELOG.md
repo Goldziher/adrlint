@@ -36,7 +36,10 @@ All notable changes to this project are documented in this file.
 - `MADR04` matched its rationale keywords anywhere in the text, so `as` inside `basemind` or
   `reason` inside `treason` counted as a rationale and almost any chosen-option paragraph passed.
   Keywords now match whole words only, and only after the chosen option, so a keyword earlier in the
-  paragraph no longer hides a rationale that follows it.
+  paragraph no longer hides a rationale that follows it. The plurals `reasons`, `rationales`,
+  `justifications` and `motivations` are accepted. The chosen-option keywords (`Chosen option`,
+  `Chosen alternative`, `Selected option`) now also match as whole words, for `MADR03a` and
+  `MADR03b` as well.
 
 ## 0.3.0 - 2026-10-29
 

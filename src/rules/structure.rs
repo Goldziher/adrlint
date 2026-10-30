@@ -13,14 +13,19 @@ use crate::diagnostics::Diagnostic;
 /// Keywords that introduce the chosen option inside `Decision Outcome`, lowercased.
 const CHOSEN_OPTION: [&str; 3] = ["chosen option", "chosen alternative", "selected option"];
 
-/// Keywords that introduce the rationale for the chosen option, lowercased.
-const RATIONALE: [&str; 8] = [
+/// Keywords that introduce the rationale for the chosen option, lowercased. Each matches as a whole
+/// word, so the plurals are listed.
+const RATIONALE: [&str; 12] = [
     "rationale",
+    "rationales",
     "reasoning",
     "reason",
+    "reasons",
     "because",
     "justification",
+    "justifications",
     "motivation",
+    "motivations",
     "motivated",
     "as",
 ];
@@ -577,6 +582,19 @@ Chosen option: \"Rust\", because it is fast.
         ] {
             let source = VALID.replace("Chosen option: \"Rust\", because it is fast.", lead);
             assert_eq!(findings(&source), [("MADR04", 14)], "{lead}");
+        }
+    }
+
+    #[test]
+    fn should_accept_a_plural_rationale_keyword() {
+        for lead in [
+            "Chosen option: \"Rust\", for two reasons: it is fast and safe.",
+            "Chosen option: \"Rust\". Rationales: speed and safety.",
+            "Chosen option: \"Rust\". Justifications: speed and safety.",
+            "Chosen option: \"Rust\". Motivations: speed and safety.",
+        ] {
+            let source = VALID.replace("Chosen option: \"Rust\", because it is fast.", lead);
+            assert_eq!(findings(&source), [], "{lead}");
         }
     }
 
