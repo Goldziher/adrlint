@@ -1,0 +1,39 @@
+version = 1
+
+[[hooks]]
+id = "adrlint-lint"
+stages = ["pre-commit"]
+args = ["lint"]
+files = ["{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md", "**/{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"]
+pass_filenames = true
+
+[[hooks.paths]]
+channel = "system"
+check = "command -v adrlint"
+run = "adrlint"
+
+[[hooks]]
+id = "adrlint-format-check"
+stages = ["pre-commit"]
+args = ["format", "--check"]
+files = ["{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md", "**/{adr,adrs,decisions,doc/adr,docs/adr}/**/*.md"]
+pass_filenames = true
+
+[[hooks.paths]]
+channel = "system"
+check = "command -v adrlint"
+run = "adrlint"
+
+[[hooks]]
+id = "adrlint-lock-check"
+stages = ["pre-commit"]
+args = ["lock", "--check"]
+files = ["**/*.md", "**/adrlint.lock"]
+always_run = true
+workspace = true
+pass_filenames = false
+
+[[hooks.paths]]
+channel = "system"
+check = "command -v adrlint"
+run = "adrlint"

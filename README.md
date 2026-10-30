@@ -282,6 +282,23 @@ A staged ADR is linted with the rest of its log, so a gap or a duplicate number 
 reported; a staged Markdown file that is not an ADR and sits outside any log, such as an
 `adrs/README.md` index, is skipped.
 
+### poly
+
+adrlint ships a [poly](https://github.com/Goldziher/poly) hook catalog, `poly-hooks.toml`. Declare it
+as a source in your `poly.toml`:
+
+```toml
+[[hooks.sources]]
+id = "adrlint"
+git = "https://github.com/Goldziher/adrlint.git"
+revision = "v0.4.0"
+hooks = ["adrlint-lint", "adrlint-format-check", "adrlint-lock-check"]
+```
+
+Then run `poly hooks update` and `poly hooks install`. The hooks call an installed `adrlint`, write
+nothing, and match the same directories as the pre-commit hooks; `adrlint-lock-check` runs on every
+commit. See [docs/poly-hooks.md](docs/poly-hooks.md).
+
 ### Lefthook
 
 ```yaml

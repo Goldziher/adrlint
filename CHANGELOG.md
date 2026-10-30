@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+
+- A poly hook catalog, `poly-hooks.toml`, with `adrlint-lint`, `adrlint-format-check` and
+  `adrlint-lock-check`. The hooks run an installed `adrlint`, never write files and match the same ADR
+  directories as the pre-commit hooks; the lock check runs on every commit, so a deletion-only commit
+  cannot skip it. A consumer adds adrlint as a `[[hooks.sources]]` entry in its `poly.toml`; see
+  `docs/poly-hooks.md`.
+
 ## 0.3.0 - 2026-10-29
 
 ### Added
