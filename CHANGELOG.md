@@ -18,9 +18,9 @@ All notable changes to this project are documented in this file.
   linted as an ADR (`MADR01`, `MADR44`): it is left out of the log, so a log can carry its own table
   of contents. Any other Markdown file without an ADR name is still reported.
 - `[lock].statuses` matches MADR's `superseded by ADR-0123` status form as `superseded`, so a
-  replaced decision written that way can be locked; the lock entry keeps the status as written. The
-  README documents the supersede flow and the recommended `status: superseded` plus
-  `superseded-by: "NNNN"` front matter.
+  replaced decision written that way can be locked; a list that names the full status still matches
+  it as written, and the lock entry keeps the status as written. The README documents the supersede
+  flow and the recommended `status: superseded` plus `superseded-by: "NNNN"` front matter.
 
 ### Fixed
 

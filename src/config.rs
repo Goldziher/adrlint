@@ -70,11 +70,15 @@ fn default_lock_statuses() -> Vec<String> {
 
 /// Whether a status is covered by the lock list, case-insensitively.
 ///
-/// MADR's template writes a replaced decision as `superseded by ADR-0123`, so that form counts as
-/// `superseded`.
+/// MADR's template writes a replaced decision as `superseded by ADR-0123`, so that form also counts
+/// as `superseded`; a list naming the full status still matches it as written.
 pub fn is_locked_status(config: &LockConfig, status: &str) -> bool {
-    let status = lifecycle_status(status);
-    config.statuses.iter().any(|locked| locked.eq_ignore_ascii_case(status))
+    let written = status.trim();
+    let lifecycle = lifecycle_status(status);
+    config
+        .statuses
+        .iter()
+        .any(|locked| locked.eq_ignore_ascii_case(written) || locked.eq_ignore_ascii_case(lifecycle))
 }
 
 /// `superseded` for a `superseded by <successor>` status, otherwise the status itself, trimmed.
@@ -746,6 +750,18 @@ mod tests {
         let parsed: Config = toml::from_str(&rendered).expect("the rendered configuration must parse");
         assert_eq!(parsed.adr.dir, PathBuf::from(render_dir(both)));
         validate(&parsed).expect("the rendered configuration must validate");
+    }
+
+    #[test]
+    fn should_still_match_a_literal_superseded_by_entry() {
+        let config = LockConfig {
+            statuses: vec!["superseded by 0031".to_owned()],
+            ..LockConfig::default()
+        };
+        assert!(is_locked_status(&config, "superseded by 0031"));
+        assert!(is_locked_status(&config, "Superseded by 0031"));
+        assert!(!is_locked_status(&config, "superseded by 0032"));
+        assert!(!is_locked_status(&config, "superseded"));
     }
 
     #[test]
