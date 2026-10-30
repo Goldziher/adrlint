@@ -1,7 +1,7 @@
 [package]
 include = ["/Cargo.toml", "/Cargo.lock", "/src/**", "/tests/**", "/fixtures/**", "/README.md", "/LICENSE"]
 name = "adrlint"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Na'aman Hirschfeld <nhirschfeld@gmail.com>"]
 description = "A fast, opinionated linter and formatter for MADR architecture decision records"
 edition = "2024"

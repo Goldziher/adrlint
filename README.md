@@ -37,7 +37,7 @@ adrlint checks all four in one run, from one parse, with one exit code.
 
 ## Status
 
-adrlint is at **0.3.0**. The rule IDs and configuration keys are stable; nothing in this README is a
+adrlint is at **0.4.0**. The rule IDs and configuration keys are stable; nothing in this README is a
 placeholder name. The implemented surface is:
 
 - `adrlint lint` — `MADR01`–`MADR08` structural rules, `MADR11`/`MADR12`/`MADR21`/`MADR31` link,
@@ -49,9 +49,9 @@ placeholder name. The implemented surface is:
 - `adrlint new "<title>"` — creates the next sequential ADR
 - `adrlint lock` / `adrlint unlock` — the content-hash immutability manifest
 
-New in 0.3.0: opt-in external link checking (`MADR11`), enabled by `[lint].check_external_links` or
-`adrlint lint --check-external-links`. It is off by default because it needs network access and makes
-a run non-deterministic. See [Links](#links-madr11madr12).
+New in 0.4.0: a poly hook catalog (`poly-hooks.toml`, see [docs/poly-hooks.md](docs/poly-hooks.md)); `README.md`
+and `index.md` in a log are no longer linted as ADRs; a `superseded by NNNN` status locks as superseded; each
+path is checked under the `.adrlint.toml` of the project that owns it.
 
 ## Features
 
@@ -134,7 +134,7 @@ Each release publishes five archives and a checksum manifest:
 Checksums are in `adrlint_<version>_checksums.txt` (`sha256sum` format). Download, verify, install:
 
 ```bash
-VERSION=0.3.0
+VERSION=0.4.0
 TRIPLE=x86_64-unknown-linux-gnu
 BASE=https://github.com/Goldziher/adrlint/releases/download/v${VERSION}
 
@@ -215,7 +215,7 @@ jobs:
           args: "lint --format github"
 ```
 
-`@v0` is a floating tag that tracks the newest 0.x release; pin an exact tag (`@v0.3.0`) where
+`@v0` is a floating tag that tracks the newest 0.x release; pin an exact tag (`@v0.4.0`) where
 reproducibility matters. `--format github` emits workflow-command annotations with end positions, so
 findings appear inline on the diff; with plain `lint`, the action registers a problem matcher that
 turns the text output into annotations.
@@ -259,7 +259,7 @@ expanded by the shell first; adrlint expands them itself.
 ```yaml
 repos:
   - repo: https://github.com/Goldziher/adrlint
-    rev: v0.3.0
+    rev: v0.4.0
     hooks:
       - id: adrlint-lint
       - id: adrlint
