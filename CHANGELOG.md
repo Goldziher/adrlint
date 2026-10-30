@@ -12,6 +12,12 @@ All notable changes to this project are documented in this file.
   cannot skip it. A consumer adds adrlint as a `[[hooks.sources]]` entry in its `poly.toml`; see
   `docs/poly-hooks.md`.
 
+### Changed
+
+- An index inside an ADR directory, `README.md` or `index.md` in any letter case, is no longer
+  linted as an ADR (`MADR01`, `MADR44`): it is left out of the log, so a log can carry its own table
+  of contents. Any other Markdown file without an ADR name is still reported.
+
 ## 0.3.0 - 2026-10-29
 
 ### Added

@@ -185,7 +185,7 @@ fn apply_fixes(
         LockFile::default()
     };
     let scanned = scan_all(directories)?;
-    // Only numbered ADRs are rewritten: a README or template inside a log is reported, never changed.
+    // Only numbered ADRs are rewritten: a template or other Markdown inside a log is reported, never changed.
     let files = scanned
         .iter()
         .flat_map(|directory| directory.adrs.iter())
@@ -420,7 +420,7 @@ fn check_file(loaded: &config::Loaded, path: &Path, check_external: bool) -> Che
             finding.fixable = true;
         }
     }
-    // `--fix` and `format` rewrite numbered ADRs only, so a README or template finding is not fixable.
+    // `--fix` and `format` rewrite numbered ADRs only, so a finding in other Markdown is not fixable.
     let name = path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())

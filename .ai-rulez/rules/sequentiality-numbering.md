@@ -22,6 +22,8 @@ label of convenience, so numbering rules are errors and are never auto-fixed.
 - Numbers are unique. `MADR43` reports every file in a collision, not just the later one.
 - Only ADR Markdown files live in the directory. `MADR42` reports anything else that is not an
   allowed asset (images referenced by an ADR).
+- An index, `README.md` or `index.md` in any letter case, is not part of the log: never linted as an
+  ADR and never a foreign file.
 - Ordering uses the numeric prefix, so zero padding is load-bearing: `0010` sorts after `0009`.
 
 ### Never renumber

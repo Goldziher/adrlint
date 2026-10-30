@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.9.2'
 scope = 'all'
-tree = 'sha256:c1658e60aa900d314fe0303ffe1beb7956947248b69ac82a6dd9c3fb930f157f'
+tree = 'sha256:ab81f9f2d7278bcccfe9d8461598d811e98b128897e275e345cd28f711ff88a9'
 
 [[served]]
 name = 'build'
@@ -196,7 +196,7 @@ digest = 'sha256:c2f75ce5db0aa6986268d66c70cd06b8339f7a5d0600db796f95591d4d408e3
 kind = 'rule'
 id = 'sequentiality-numbering'
 path = 'rules/sequentiality-numbering.md'
-digest = 'sha256:2cecf0f37ae1348109e9382d39592a74eed62dbc77a0ab78b1c83a15ba6802f3'
+digest = 'sha256:2cf8bd133bd4bb302716ea7c256469a0b03a72127ae28d41a7cfb703108197ab'
 
 [[item]]
 kind = 'rule'

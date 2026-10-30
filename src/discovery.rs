@@ -19,6 +19,9 @@ pub struct Directory {
 
 /// Lists one directory: its Markdown files as ADR candidates and everything else as foreign files.
 ///
+/// An index (`README.md` or `index.md`, see [`is_index`]) is neither: a log's table of contents is
+/// not a decision, so it is left out of the log entirely.
+///
 /// Entry types come from the directory read itself, so only a symlink costs an extra `stat`.
 pub fn scan(dir: &Path) -> io::Result<Directory> {
     let mut entries = fs::read_dir(dir)?
@@ -49,6 +52,9 @@ pub fn scan(dir: &Path) -> io::Result<Directory> {
             foreign.push(path);
             continue;
         }
+        if is_index(name) {
+            continue;
+        }
         adrs.push(AdrFile {
             path: path.clone(),
             name: name.to_owned(),
@@ -62,6 +68,13 @@ pub fn scan(dir: &Path) -> io::Result<Directory> {
         adrs,
         foreign,
     })
+}
+
+/// Whether a file name is a directory index, `README.md` or `index.md` in any letter case.
+pub fn is_index(name: &str) -> bool {
+    ["README.md", "index.md"]
+        .iter()
+        .any(|index| index.eq_ignore_ascii_case(name))
 }
 
 pub fn parse_number(name: &str) -> Option<u32> {
@@ -165,6 +178,28 @@ mod tests {
         assert!(!is_numbered("0001-use-rust.txt"));
         assert!(!is_numbered("01-use-rust.md"));
         assert!(!is_numbered("404.md"));
+    }
+
+    #[test]
+    fn should_leave_an_index_out_of_the_log() {
+        let directory = tempfile::tempdir().unwrap();
+        for name in ["0001-use-rust.md", "README.md", "index.md", "notes.md"] {
+            fs::write(directory.path().join(name), "# x\n").unwrap();
+        }
+        let scanned = scan(directory.path()).unwrap();
+        let names: Vec<&str> = scanned.adrs.iter().map(|file| file.name.as_str()).collect();
+        assert_eq!(names, ["0001-use-rust.md", "notes.md"]);
+        assert!(scanned.foreign.is_empty());
+    }
+
+    #[test]
+    fn should_recognise_an_index_in_any_case() {
+        for name in ["README.md", "readme.md", "Readme.md", "index.md", "INDEX.md"] {
+            assert!(is_index(name), "{name}");
+        }
+        for name in ["README.txt", "0001-readme.md", "index.markdown", "notes.md"] {
+            assert!(!is_index(name), "{name}");
+        }
     }
 
     #[test]

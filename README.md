@@ -426,7 +426,7 @@ is passed, and exits `1` when it refused. Files it rewrote are listed on stderr 
 It plans every file before writing any: if a file cannot be read, or an ADR is a symlink, nothing is
 written. A fix refused on a locked ADR is reported and the other files are still written. A file
 edited after planning is not overwritten, and rewritten files keep their permissions. It rewrites
-only numbered ADRs (never a README or template inside a log), and given only files rewrites only
+only numbered ADRs (never a template or other Markdown inside a log), and given only files rewrites only
 those files.
 
 ### `adrlint format`
@@ -559,6 +559,9 @@ place the URL is cited. Enabling it lets `lint` contact every host your ADRs lin
 
 ¹ Images (`png`, `jpg`, `jpeg`, `gif`, `svg`, `webp`) that an ADR in the same directory links to are
 allowed.
+
+An index, `README.md` or `index.md` in any letter case, is not part of the log: it is neither linted
+as an ADR nor reported as a foreign file, so a log can carry its own table of contents.
 
 ### adrlint (`ADR50`–`ADR52`)
 

@@ -404,7 +404,7 @@ fn should_ignore_a_markdown_only_directory_in_a_recursive_walk() {
 #[test]
 fn should_report_a_foreign_file_in_a_discovered_adr_directory() {
     let directory = tree();
-    fs::write(directory.path().join("adrs/team-a/README.md"), "# Team notes\n").expect("writing a README");
+    fs::write(directory.path().join("adrs/team-a/notes.md"), "# Team notes\n").expect("writing notes");
 
     let output = lint_json(&directory, &["--recursive", "adrs"]);
     assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
@@ -413,11 +413,29 @@ fn should_report_a_foreign_file_in_a_discovered_adr_directory() {
             diagnostic["code"] == "MADR44"
                 && diagnostic["path"]
                     .as_str()
-                    .is_some_and(|path| path.replace('\\', "/").ends_with("adrs/team-a/README.md"))
+                    .is_some_and(|path| path.replace('\\', "/").ends_with("adrs/team-a/notes.md"))
         }),
         "a directory that holds ADRs still rejects a Markdown file that is not an ADR: {}",
         stdout(&output)
     );
+}
+
+#[test]
+fn should_not_lint_an_index_inside_an_adr_directory() {
+    let directory = tree();
+    for name in ["README.md", "index.md"] {
+        let path = directory.path().join("adrs/team-a").join(name);
+        fs::write(path, "# ADR index\n\n* [0001](0001-a.md)\n").expect("writing an index");
+    }
+
+    for args in [
+        &["--recursive", "adrs"][..],
+        &["adrs/team-a/README.md", "adrs/team-a/index.md"][..],
+    ] {
+        let output = lint_json(&directory, args);
+        assert_eq!(output.status.code(), Some(0), "{args:?}: {}", stdout(&output));
+        assert!(diagnostics(&output).is_empty(), "{args:?}: {}", stdout(&output));
+    }
 }
 
 /// A project with no `dir` of its own, so a missing `docs/adr` falls back to discovery.

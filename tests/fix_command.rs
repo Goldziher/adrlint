@@ -213,19 +213,19 @@ fn should_write_nothing_when_a_planned_file_is_a_symlink() {
 }
 
 #[test]
-fn should_not_mark_a_readme_finding_fixable() {
+fn should_not_mark_a_finding_in_a_non_adr_file_fixable() {
     let (directory, _) = project(ADR);
-    fs::write(directory.path().join("docs/adr/README.md"), "# Index\n\n- one\n").expect("writing a README");
+    fs::write(directory.path().join("docs/adr/notes.md"), "# Notes\n\n- one\n").expect("writing notes");
 
     let output = run(&directory, &["lint", "--format", "json"]);
     let findings: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).expect("JSON findings");
-    let readme = findings
+    let notes = findings
         .iter()
-        .filter(|finding| finding["path"].as_str().is_some_and(|path| path.ends_with("README.md")))
+        .filter(|finding| finding["path"].as_str().is_some_and(|path| path.ends_with("notes.md")))
         .collect::<Vec<_>>();
-    assert!(!readme.is_empty(), "{}", stdout(&output));
+    assert!(!notes.is_empty(), "{}", stdout(&output));
     assert!(
-        readme.iter().all(|finding| finding["fixable"] == false),
+        notes.iter().all(|finding| finding["fixable"] == false),
         "{}",
         stdout(&output)
     );
