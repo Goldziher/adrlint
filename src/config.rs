@@ -411,16 +411,40 @@ fn apply_file(config: &mut Config, path: &Path, required: bool) -> Result<()> {
 }
 
 /// Canonicalises a root when possible; a root that does not exist is kept as given.
+/// `paths` grouped by the project that owns each one, the nearest project file above it, in the
+/// order the projects first appear. No paths is one empty group, so a caller runs once either way.
+///
+/// Each group can then be loaded with [`load_for`] and checked under its own configuration.
+pub fn project_groups(paths: &[PathBuf]) -> Result<Vec<Vec<PathBuf>>> {
+    if paths.is_empty() {
+        return Ok(vec![Vec::new()]);
+    }
+    let cwd = std::env::current_dir().context("reading the current directory")?;
+    let mut groups: Vec<(Option<PathBuf>, Vec<PathBuf>)> = Vec::new();
+    for path in paths {
+        let owner = owning_project(&cwd, path);
+        match groups.iter_mut().find(|(project, _)| *project == owner) {
+            Some((_, group)) => group.push(path.clone()),
+            None => groups.push((owner, vec![path.clone()])),
+        }
+    }
+    Ok(groups.into_iter().map(|(_, group)| group).collect())
+}
+
+/// The directory of the nearest project file above `path`, canonicalised.
+fn owning_project(cwd: &Path, path: &Path) -> Option<PathBuf> {
+    cwd.join(path)
+        .ancestors()
+        .find(|directory| CONFIG_FILE_NAMES.iter().any(|name| directory.join(name).is_file()))
+        .map(|directory| absolute(directory.to_path_buf()))
+}
+
 /// The directory of the nearest project file above every path in `paths`, or `None` when no path
 /// has one (or none is given), so the walk starts at the current directory as before.
 fn project_base(cwd: &Path, paths: &[PathBuf]) -> Result<Option<PathBuf>> {
     let mut base: Option<Option<PathBuf>> = None;
     for path in paths {
-        let path = cwd.join(path);
-        let nearest = path
-            .ancestors()
-            .find(|directory| CONFIG_FILE_NAMES.iter().any(|name| directory.join(name).is_file()))
-            .map(|directory| absolute(directory.to_path_buf()));
+        let nearest = owning_project(cwd, path);
         match &base {
             None => base = Some(nearest),
             Some(previous) if *previous == nearest => {}

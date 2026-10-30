@@ -596,8 +596,11 @@ rule without discarding the rest. `adrlint init` writes the full commented templ
 
 When `lint`, `format` or `lock` is given paths, the walk starts at the nearest project file above
 them instead of the current directory, so `adrlint lint repo-a/adrs` run from a parent directory
-uses `repo-a/.adrlint.toml` and `repo-a/adrlint.lock`. Paths from two different projects in one run
-are an error (exit `2`); run adrlint once per project.
+uses `repo-a/.adrlint.toml` and `repo-a/adrlint.lock`. `lint` and `format` given paths from several
+projects check each project's paths under its own configuration and report the findings together,
+so a hook in a monorepo with nested `.adrlint.toml` files works unchanged. `lock` writes one
+manifest per project, so it refuses paths from more than one project (exit `2`); run it once per
+project. `--config` applies one file to every path.
 
 ```toml
 [adr]

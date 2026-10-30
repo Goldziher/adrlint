@@ -50,11 +50,54 @@ fn run(cli: Cli) -> Result<ExitCode> {
     }
 }
 
+/// The paths each run covers: grouped by owning project, so a hook that passes files from several
+/// nested projects checks each under its own configuration. `--config` names one configuration for
+/// every path.
+fn path_groups(config_path: Option<&Path>, paths: &[PathBuf]) -> Result<Vec<Vec<PathBuf>>> {
+    if config_path.is_some() {
+        return Ok(vec![paths.to_vec()]);
+    }
+    config::project_groups(paths)
+}
+
 fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitCode> {
-    let loaded = config::load_for(config_path, &args.paths)?;
+    let mut findings = Vec::new();
+    let mut files = 0;
+    let mut refused = false;
+    for paths in path_groups(config_path, &args.paths)? {
+        let run = lint_project(config_path, &args, &paths)?;
+        findings.extend(run.findings);
+        files += run.files;
+        refused |= run.refused;
+    }
+    diagnostics::sort(&mut findings);
+    report::print(&findings, args.format, color)?;
+    if args.format == OutputFormat::Text {
+        eprintln!("{}", report::summarize(&findings, files));
+    }
+
+    // A fix that was refused or not written leaves the file as it was: the run did not do what was asked.
+    if diagnostics::has_errors(&findings) || refused {
+        Ok(ExitCode::from(1))
+    } else {
+        Ok(ExitCode::SUCCESS)
+    }
+}
+
+/// What linting one project's paths found.
+struct LintRun {
+    findings: Vec<diagnostics::Diagnostic>,
+    files: usize,
+    /// A fix was refused or could not be written.
+    refused: bool,
+}
+
+/// Lints `paths`, which all belong to one project, under that project's configuration.
+fn lint_project(config_path: Option<&Path>, args: &LintArgs, paths: &[PathBuf]) -> Result<LintRun> {
+    let loaded = config::load_for(config_path, paths)?;
     report_unknown_rule_keys(&loaded);
-    let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
-    let named = named_files(&args.paths);
+    let directories = resolve_directories(paths, &loaded, args.recursive)?;
+    let named = named_files(paths);
 
     let mut refused = false;
     if args.fix {
@@ -77,17 +120,11 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
     if let Some(canonical) = collected.stale {
         report_stale_lock(&lock_path(&loaded), canonical);
     }
-    report::print(&collected.findings, args.format, color)?;
-    if args.format == OutputFormat::Text {
-        eprintln!("{}", report::summarize(&collected.findings, collected.files));
-    }
-
-    // A fix that was refused or not written leaves the file as it was: the run did not do what was asked.
-    if diagnostics::has_errors(&collected.findings) || refused {
-        Ok(ExitCode::from(1))
-    } else {
-        Ok(ExitCode::SUCCESS)
-    }
+    Ok(LintRun {
+        findings: collected.findings,
+        files: collected.files,
+        refused,
+    })
 }
 
 /// Formats every ADR reachable from `paths`, writing only the files that change.
@@ -99,25 +136,29 @@ fn lint(config_path: Option<&Path>, args: LintArgs, color: bool) -> Result<ExitC
 /// for instance) is refused unless `--force` is passed. Formatting the canonical serializer ignores
 /// is still written: a reflow or a marker change never breaks a lock.
 fn format_command(config_path: Option<&Path>, args: FormatArgs) -> Result<ExitCode> {
-    let loaded = config::load_for(config_path, &args.paths)?;
-    let directories = resolve_directories(&args.paths, &loaded, args.recursive)?;
-    let named = named_files(&args.paths);
     let mode = FixMode {
         check: args.check,
         force: args.force,
         structural: false,
     };
-    let outcome = apply_fixes(&loaded, &directories, named.as_ref(), &mode)?;
+    let mut failed = false;
+    for paths in path_groups(config_path, &args.paths)? {
+        let loaded = config::load_for(config_path, &paths)?;
+        let directories = resolve_directories(&paths, &loaded, args.recursive)?;
+        let named = named_files(&paths);
+        let outcome = apply_fixes(&loaded, &directories, named.as_ref(), &mode)?;
 
-    for path in &outcome.changed {
-        if args.check {
-            println!("would reformat {}", shown(path).display());
-        } else {
-            println!("reformatted {}", shown(path).display());
+        for path in &outcome.changed {
+            if args.check {
+                println!("would reformat {}", shown(path).display());
+            } else {
+                println!("reformatted {}", shown(path).display());
+            }
         }
+        failed |= outcome.failed || !outcome.refused.is_empty() || (args.check && !outcome.changed.is_empty());
     }
 
-    if outcome.failed || !outcome.refused.is_empty() || (args.check && !outcome.changed.is_empty()) {
+    if failed {
         return Ok(ExitCode::from(1));
     }
     Ok(ExitCode::SUCCESS)

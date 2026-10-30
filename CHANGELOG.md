@@ -30,8 +30,10 @@ All notable changes to this project are documented in this file.
 - `lint`, `format` and `lock` given a path inside another project's log, such as
   `adrlint lint repo-a/adrs` from a polyrepo root, used the configuration above the current
   directory and ignored `repo-a/.adrlint.toml`, so the wrong `start`, rules and lock manifest applied.
-  The project-file walk now starts at the nearest project file above the paths. Paths from two
-  projects in one run are reported as an error instead of being checked with one project's settings.
+  The project-file walk now starts at the nearest project file above the paths. `lint` and
+  `format` given paths from several projects, as a monorepo hook passes them, check each project's
+  paths under its own configuration and merge the findings into one report. `lock` refuses paths
+  from more than one project (exit `2`), because each project has its own manifest.
 - `adrlint lock --check` exited `2` in a repository with no `adrlint.lock` and no ADR in a locked
   status, so CI and the always-run hook failed before a log was ever locked. It now exits `0` with
   "nothing to lock". It still exits `1` when a lockable ADR exists but the manifest does not, and

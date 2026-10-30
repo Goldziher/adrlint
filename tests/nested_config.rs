@@ -72,8 +72,8 @@ fn should_lock_a_nested_log_into_its_own_manifest() {
     assert_eq!(output.status.code(), Some(0), "{}", report(&output));
 }
 
-#[test]
-fn should_refuse_paths_from_two_projects_in_one_run() {
+/// `polyrepo()` plus `repo-b`, whose log starts at the default `0001`.
+fn two_projects() -> TempDir {
     let directory = polyrepo();
     write(
         directory.path(),
@@ -81,12 +81,55 @@ fn should_refuse_paths_from_two_projects_in_one_run() {
         "[adr]\ndir = \"adrs\"\npaths = []\n",
     );
     write(directory.path(), "repo-b/adrs/0001-b.md", ADR);
+    directory
+}
 
-    let output = run(&directory, &["lint", "repo-a/adrs", "repo-b/adrs"]);
+fn diagnostics(output: &Output) -> Vec<serde_json::Value> {
+    serde_json::from_slice(&output.stdout).unwrap_or_else(|_| panic!("JSON findings: {}", report(output)))
+}
+
+#[test]
+fn should_lint_paths_from_two_projects_each_with_its_own_configuration() {
+    let directory = two_projects();
+    let output = run(&directory, &["lint", "repo-a/adrs/0000-a.md", "repo-b/adrs/0001-b.md"]);
+    assert_eq!(output.status.code(), Some(0), "{}", report(&output));
+    let output = run(&directory, &["format", "--check", "repo-a/adrs", "repo-b/adrs"]);
+    assert_eq!(output.status.code(), Some(0), "{}", report(&output));
+
+    write(directory.path(), "repo-b/adrs/0002-broken.md", "# Not a decision\n");
+    let output = run(
+        &directory,
+        &[
+            "lint",
+            "--format",
+            "json",
+            "repo-a/adrs/0000-a.md",
+            "repo-b/adrs/0002-broken.md",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1), "{}", report(&output));
+    let findings = diagnostics(&output);
+    assert!(!findings.is_empty(), "{}", report(&output));
+    assert!(
+        findings.iter().all(|finding| finding["path"]
+            .as_str()
+            .is_some_and(|path| path.replace('\\', "/").contains("repo-b/adrs/0002-broken.md"))),
+        "repo-a is linted with its own start = 0 and stays clean: {}",
+        report(&output)
+    );
+}
+
+#[test]
+fn should_refuse_to_lock_paths_from_two_projects_in_one_run() {
+    let directory = two_projects();
+
+    let output = run(&directory, &["lock", "repo-a/adrs", "repo-b/adrs"]);
     assert_eq!(output.status.code(), Some(2), "{}", report(&output));
     assert!(
         report(&output).contains("different adrlint projects"),
         "{}",
         report(&output)
     );
+    assert!(!directory.path().join("repo-a/adrlint.lock").exists());
+    assert!(!directory.path().join("repo-b/adrlint.lock").exists());
 }
