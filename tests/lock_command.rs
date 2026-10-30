@@ -98,6 +98,53 @@ fn should_lock_accepted_adrs_and_detect_content_changes() {
     assert!(output.status.success(), "{}", stderr(&output));
 }
 
+/// The scaffold's ADR with its `accepted` status replaced by `status`.
+fn set_status(adr: &Path, original: &str, status: &str) {
+    fs::write(
+        adr,
+        original.replacen("status: accepted", &format!("status: {status}"), 1),
+    )
+    .unwrap();
+}
+
+#[test]
+fn should_lock_a_superseded_by_status_as_superseded() {
+    let (directory, adr) = scaffold();
+    let original = fs::read_to_string(&adr).unwrap();
+    fs::write(
+        directory.path().join(".adrlint.toml"),
+        "[adr]\ndir = \"docs/adr\"\npaths = []\n[lock]\nstatuses = [\"accepted\", \"superseded\"]\n",
+    )
+    .unwrap();
+    let manifest_path = directory.path().join("adrlint.lock");
+    for status in ["superseded by 0002", "Superseded by ADR-0002", "superseded"] {
+        set_status(&adr, &original, status);
+        let output = run(adrlint().current_dir(directory.path()).arg("lock"));
+        assert!(output.status.success(), "{status}: {}", stderr(&output));
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        assert!(
+            manifest.contains(&format!("status = \"{status}\"")),
+            "{status} must be locked under `superseded`: {manifest}"
+        );
+        fs::remove_file(&manifest_path).unwrap();
+    }
+}
+
+#[test]
+fn should_not_lock_a_superseded_by_status_unless_superseded_is_locked() {
+    let (directory, adr) = scaffold();
+    let original = fs::read_to_string(&adr).unwrap();
+    set_status(&adr, &original, "superseded by 0002");
+
+    let output = run(adrlint().current_dir(directory.path()).arg("lock"));
+    assert_eq!(output.status.code(), Some(2), "{}", stdout(&output));
+    assert!(
+        stderr(&output).contains("no ADRs matched lock.statuses"),
+        "{}",
+        stderr(&output)
+    );
+}
+
 #[test]
 fn should_report_a_locked_adr_that_disappears() {
     let (directory, adr) = scaffold();

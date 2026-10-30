@@ -662,6 +662,28 @@ blake3 = "…"
   consumer's build. `lint` prints that warning once and verifies nothing until the manifest is
   refreshed with `adrlint lock --all`.
 
+### Superseding a decision
+
+A locked ADR is never rewritten. To replace a decision:
+
+1. Write and accept the new ADR (`adrlint new`), citing the one it replaces.
+2. `adrlint unlock <old> --reason "superseded by NNNN"`.
+3. Mark the old ADR with `status: superseded` and a `superseded-by` key naming its successor:
+
+   ```yaml
+   ---
+   status: superseded
+   superseded-by: "0031"
+   date: 2026-01-15
+   ---
+   ```
+
+4. `adrlint lock`.
+
+Add `superseded` (and `deprecated`, if you use it) to `[lock].statuses` so the replaced ADR is locked
+again; the default list holds only `accepted` and `rejected`. MADR's template form,
+`status: superseded by ADR-0031`, also counts as `superseded`, so either spelling locks.
+
 The manifest is committed. It is reviewed like source; `ADR50` and `ADR51` are the only findings a
 change to it can produce. `ADR52` is separate: it reports a file that cannot be read at all, and the
 run continues so one corrupt file cannot hide every other finding.

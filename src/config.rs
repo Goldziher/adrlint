@@ -69,8 +69,24 @@ fn default_lock_statuses() -> Vec<String> {
 }
 
 /// Whether a status is covered by the lock list, case-insensitively.
+///
+/// MADR's template writes a replaced decision as `superseded by ADR-0123`, so that form counts as
+/// `superseded`.
 pub fn is_locked_status(config: &LockConfig, status: &str) -> bool {
+    let status = lifecycle_status(status);
     config.statuses.iter().any(|locked| locked.eq_ignore_ascii_case(status))
+}
+
+/// `superseded` for a `superseded by <successor>` status, otherwise the status itself, trimmed.
+fn lifecycle_status(status: &str) -> &str {
+    let status = status.trim();
+    let mut words = status.split_whitespace();
+    let names_successor = matches!(
+        (words.next(), words.next(), words.next()),
+        (Some(first), Some(by), Some(_))
+            if first.eq_ignore_ascii_case("superseded") && by.eq_ignore_ascii_case("by")
+    );
+    if names_successor { "superseded" } else { status }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -460,6 +476,7 @@ allow_gaps = false
 check_external_links = false
 
 # Accepted decisions are immutable once locked. Presence of the manifest is what opts in.
+# Statuses match case-insensitively; MADR's `superseded by ADR-0123` counts as `superseded`.
 [lock]
 enabled = true
 path = "adrlint.lock"
@@ -683,6 +700,32 @@ mod tests {
         let parsed: Config = toml::from_str(&rendered).expect("the rendered configuration must parse");
         assert_eq!(parsed.adr.dir, PathBuf::from(render_dir(both)));
         validate(&parsed).expect("the rendered configuration must validate");
+    }
+
+    #[test]
+    fn should_lock_a_superseded_by_status_as_superseded() {
+        let config = LockConfig {
+            statuses: vec!["superseded".to_owned()],
+            ..LockConfig::default()
+        };
+        for status in [
+            "superseded",
+            "superseded by 0031",
+            "Superseded by ADR-0031",
+            " superseded  by\t31 ",
+        ] {
+            assert!(is_locked_status(&config, status), "{status:?}");
+        }
+        for status in [
+            "superseded by",
+            "superseded by ",
+            "supersededby 0031",
+            "superseded-by 0031",
+            "accepted",
+        ] {
+            assert!(!is_locked_status(&config, status), "{status:?}");
+        }
+        assert!(!is_locked_status(&LockConfig::default(), "superseded by 0031"));
     }
 
     #[test]

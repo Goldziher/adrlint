@@ -74,6 +74,9 @@ Superseding a decision normally means writing a new ADR that references the old 
 entry locked. Editing the old ADR's `status` or adding a `superseded-by` link requires an unlock,
 because that is a change to a historical document.
 
+A `superseded by <successor>` status locks as `superseded`; prefer `status: superseded` plus
+`superseded-by: "NNNN"`.
+
 ### Rules
 
 - `ADR50` — a locked ADR's canonical hash differs from the manifest.
