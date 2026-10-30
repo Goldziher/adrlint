@@ -8,6 +8,9 @@ The catalog exists since adrlint 0.4.0. Every hook runs the installed `adrlint` 
 catalog revision pins the hook definitions, not the binary: install the reviewed adrlint version
 separately (any channel in the README) in local setup and CI.
 
+The catalog needs poly 0.14.0 or later, the first release whose catalog hooks accept
+`pass_filenames` and `always_run`. It is tested with poly 0.31.2.
+
 ## Add adrlint to a repository
 
 Add a Git source to `poly.toml`:
@@ -52,7 +55,10 @@ None of the hooks writes a file. Run `adrlint format` yourself when `adrlint-for
 
 The file hooks match Markdown under `adr/`, `adrs/`, `decisions/`, `doc/adr/` and `docs/adr/`, at the
 repository root or nested, the same directories as the pre-commit hooks. A staged ADR is linted with
-the rest of its log, so a gap or duplicate number next to it is still reported.
+the rest of its log, so a gap or duplicate number next to it is still reported. A commit that only
+deletes an ADR stages no file for these hooks, so it is not linted, and the gap it leaves is
+reported on the next commit that touches the log or by `adrlint lint` in CI; `adrlint-lock-check`
+still fails when the deleted ADR was locked (`ADR51`).
 
 `adrlint-lock-check` always runs and receives no filenames, because poly leaves deleted files out of
 the staged list: a commit that only deletes a locked ADR or edits `adrlint.lock` must still be
