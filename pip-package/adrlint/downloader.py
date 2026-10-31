@@ -38,6 +38,17 @@ BASE_URL = "https://github.com/Goldziher/adrlint/releases/download"
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
 
+def _is_musl() -> bool:
+    """Whether this Linux runtime uses musl rather than glibc."""
+    if platform.system().lower() != "linux":
+        return False
+    try:
+        # glibc answers this; musl does not implement the GNU libc version string.
+        return not os.confstr("CS_GNU_LIBC_VERSION")
+    except (AttributeError, OSError, ValueError):
+        return True
+
+
 def _platform_triple() -> str:
     system = platform.system().lower()
     machine = platform.machine().lower()
@@ -45,13 +56,16 @@ def _platform_triple() -> str:
     if system == "windows":
         if machine in {"amd64", "x86_64"}:
             return "x86_64-pc-windows-msvc"
+        if machine in {"arm64", "aarch64"}:
+            return "aarch64-pc-windows-msvc"
         if machine in {"x86", "i386", "i686"}:
             raise RuntimeError("32-bit Windows is not supported")
     elif system == "linux":
+        libc = "musl" if _is_musl() else "gnu"
         if machine in {"amd64", "x86_64"}:
-            return "x86_64-unknown-linux-gnu"
+            return f"x86_64-unknown-linux-{libc}"
         if machine in {"aarch64", "arm64"}:
-            return "aarch64-unknown-linux-gnu"
+            return f"aarch64-unknown-linux-{libc}"
     elif system == "darwin":
         if machine in {"amd64", "x86_64"}:
             return "x86_64-apple-darwin"

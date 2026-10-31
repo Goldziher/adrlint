@@ -75,6 +75,7 @@ macOS)
 Windows)
   case "$RUNNER_ARCH" in
   X64) triple="x86_64-pc-windows-msvc" ;;
+  ARM64) triple="aarch64-pc-windows-msvc" ;;
   *)
     echo "::error::adrlint publishes no Windows release asset for architecture $RUNNER_ARCH"
     exit 1

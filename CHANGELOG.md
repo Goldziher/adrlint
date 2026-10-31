@@ -2,7 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.4.1 - 2026-10-31
+
+### Added
+
+- Release archives for `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl` and
+  `aarch64-pc-windows-msvc`, so Alpine and other musl containers and Windows on Arm have a prebuilt
+  binary. The npm and PyPI wrappers now choose the musl archive on a musl host, Scoop publishes both
+  Windows architectures, and the release workflow verifies all eight archives before checksumming.
 
 ### Changed
 

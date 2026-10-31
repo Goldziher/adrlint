@@ -121,15 +121,18 @@ Requires Python 3.10+.
 
 ### Prebuilt archives
 
-Each release publishes five archives and a checksum manifest:
+Each release publishes eight archives and a checksum manifest:
 
-| Platform            | Archive                                    |
-| ------------------- | ------------------------------------------ |
-| Linux x86_64        | `adrlint-x86_64-unknown-linux-gnu.tar.gz`  |
-| Linux arm64         | `adrlint-aarch64-unknown-linux-gnu.tar.gz` |
-| macOS Intel         | `adrlint-x86_64-apple-darwin.tar.gz`       |
-| macOS Apple Silicon | `adrlint-aarch64-apple-darwin.tar.gz`      |
-| Windows x86_64      | `adrlint-x86_64-pc-windows-msvc.zip`       |
+| Platform            | Archive                                     |
+| ------------------- | ------------------------------------------- |
+| Linux x86_64        | `adrlint-x86_64-unknown-linux-gnu.tar.gz`   |
+| Linux arm64         | `adrlint-aarch64-unknown-linux-gnu.tar.gz`  |
+| Linux x86_64 musl   | `adrlint-x86_64-unknown-linux-musl.tar.gz`  |
+| Linux arm64 musl    | `adrlint-aarch64-unknown-linux-musl.tar.gz` |
+| macOS Intel         | `adrlint-x86_64-apple-darwin.tar.gz`        |
+| macOS Apple Silicon | `adrlint-aarch64-apple-darwin.tar.gz`       |
+| Windows x86_64      | `adrlint-x86_64-pc-windows-msvc.zip`        |
+| Windows arm64       | `adrlint-aarch64-pc-windows-msvc.zip`       |
 
 Checksums are in `adrlint_<version>_checksums.txt` (`sha256sum` format). Download, verify, install:
 
@@ -147,7 +150,8 @@ install -m 0755 adrlint /usr/local/bin/adrlint
 ```
 
 On Windows, compare `(Get-FileHash adrlint-x86_64-pc-windows-msvc.zip -Algorithm SHA256).Hash` with
-the manifest line, then extract `adrlint.exe` onto your `PATH`. The Windows build targets MSVC only.
+the manifest line, then extract `adrlint.exe` onto your `PATH`. The Windows builds use MSVC on x86_64
+and arm64; the musl archives are static and need no glibc.
 
 <details>
 <summary><b>Build from source</b></summary>

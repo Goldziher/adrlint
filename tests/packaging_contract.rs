@@ -245,6 +245,7 @@ fn every_build_and_publish_job_requires_the_verify_job() {
         "build-macos",
         "build-windows",
         "build-linux",
+        "build-linux-musl",
         "publish_crates",
         "publish_npm",
         "publish_pypi",
@@ -379,16 +380,24 @@ fn the_windows_archive_is_built_natively_with_msvc() {
     let block = job_block(&text, "build-windows");
 
     assert!(
-        block.contains("runs-on: windows-latest"),
-        "the Windows archive must be built on a Windows runner, not cross-compiled"
+        block.contains("runs-on: ${{ matrix.os }}"),
+        "the Windows archives must be built on Windows runners, not cross-compiled"
     );
     assert!(
-        block.contains("TRIPLE: x86_64-pc-windows-msvc"),
+        block.contains("triple: x86_64-pc-windows-msvc"),
         "build-windows must target x86_64-pc-windows-msvc"
     );
     assert!(
-        block.contains("targets: x86_64-pc-windows-msvc"),
-        "the Windows job must install the msvc target"
+        block.contains("triple: aarch64-pc-windows-msvc"),
+        "build-windows must target aarch64-pc-windows-msvc"
+    );
+    assert!(
+        block.contains("os: windows-latest") && block.contains("os: windows-11-arm"),
+        "each Windows triple needs its native runner"
+    );
+    assert!(
+        block.contains("targets: ${{ matrix.triple }}"),
+        "the Windows job must install the target it builds"
     );
     assert!(
         block.contains("cargo build --release --bin adrlint --target $env:TRIPLE"),
@@ -438,11 +447,29 @@ fn every_installer_requests_the_msvc_windows_archive() {
         npm.contains(r#"const archiveName = `adrlint-${triple}.${isWindows ? "zip" : "tar.gz"}`;"#),
         "the npm wrapper must still request a .zip on Windows"
     );
+    assert!(
+        npm.contains(r#""Linux:x64:musl": "x86_64-unknown-linux-musl","#)
+            && npm.contains(r#""Linux:arm64:musl": "aarch64-unknown-linux-musl","#),
+        "the npm wrapper must resolve musl Linux to the musl archives"
+    );
+    assert!(
+        npm.contains(r#""Windows_NT:arm64": "aarch64-pc-windows-msvc","#),
+        "the npm wrapper must resolve Windows arm64 to the arm64 archive"
+    );
 
     let python = read("pip-package/adrlint/downloader.py");
     assert!(
         python.contains(r#"return "x86_64-pc-windows-msvc""#),
         "the pip wrapper must resolve Windows amd64 to the msvc archive"
+    );
+    assert!(
+        python.contains(r#"return f"x86_64-unknown-linux-{libc}""#)
+            && python.contains(r#"return f"aarch64-unknown-linux-{libc}""#),
+        "the pip wrapper must select the gnu or musl Linux archive at runtime"
+    );
+    assert!(
+        python.contains(r#"return "aarch64-pc-windows-msvc""#),
+        "the pip wrapper must resolve Windows arm64 to the arm64 archive"
     );
     assert!(
         python.contains(r#"ext = "zip" if "windows" in triple else "tar.gz""#),
@@ -481,6 +508,43 @@ fn the_release_asset_lists_name_the_msvc_archive() {
     assert!(
         job_block(&text, "verify-binstall").contains(r#"{"os": "windows-latest", "target": "x86_64-pc-windows-msvc"}"#),
         "the binstall smoke test must install the msvc archive"
+    );
+}
+
+#[test]
+fn the_release_asset_lists_name_every_published_archive() {
+    let text = read(".github/workflows/publish.yaml");
+    let archives = [
+        "adrlint-x86_64-unknown-linux-gnu.tar.gz",
+        "adrlint-aarch64-unknown-linux-gnu.tar.gz",
+        "adrlint-x86_64-unknown-linux-musl.tar.gz",
+        "adrlint-aarch64-unknown-linux-musl.tar.gz",
+        "adrlint-aarch64-apple-darwin.tar.gz",
+        "adrlint-x86_64-apple-darwin.tar.gz",
+        "adrlint-x86_64-pc-windows-msvc.zip",
+        "adrlint-aarch64-pc-windows-msvc.zip",
+    ];
+
+    for job in ["meta", "checksums", "finalize_release"] {
+        let block = job_block(&text, job);
+        for archive in archives {
+            assert!(
+                block.contains(archive),
+                "job `{job}` does not expect {archive} on the release"
+            );
+        }
+    }
+
+    let musl = job_block(&text, "build-linux-musl");
+    for triple in ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"] {
+        assert!(
+            musl.contains(&format!("triple: {triple}")),
+            "build-linux-musl does not build {triple}"
+        );
+    }
+    assert!(
+        musl.contains("cross build --release --bin adrlint"),
+        "musl archives need cross's musl toolchain"
     );
 }
 
@@ -564,6 +628,22 @@ fn the_scoop_manifest_matches_the_published_assets() {
             "the manifest generator uses `{nondeterministic}`, so its output is not reproducible"
         );
     }
+}
+
+#[test]
+fn the_scoop_manifest_publishes_both_windows_architectures() {
+    let script = read("scripts/update-scoop-manifest.sh");
+
+    assert!(
+        script.contains(r#"ARM64_ARCHIVE="adrlint-${ARM64_TRIPLE}.zip""#)
+            && script.contains(r#""url": "${BASE}/${ARM64_ARCHIVE}""#)
+            && script.contains(r#""hash": "${ARM64_HASH}""#),
+        "the Scoop manifest must ship the Windows arm64 archive with its checksum"
+    );
+    assert!(
+        script.contains(r#""arm64": {"#),
+        "architecture.arm64 must describe the Windows arm64 archive"
+    );
 }
 
 #[test]

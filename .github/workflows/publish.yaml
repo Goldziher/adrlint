@@ -161,8 +161,9 @@ jobs:
             assets="$(gh release view "$tag" --json assets --jq '.assets[].name')"
             release_assets_exist=true
             for asset in adrlint-x86_64-unknown-linux-gnu.tar.gz adrlint-aarch64-unknown-linux-gnu.tar.gz \
+              adrlint-x86_64-unknown-linux-musl.tar.gz adrlint-aarch64-unknown-linux-musl.tar.gz \
               adrlint-aarch64-apple-darwin.tar.gz adrlint-x86_64-apple-darwin.tar.gz \
-              adrlint-x86_64-pc-windows-msvc.zip; do
+              adrlint-x86_64-pc-windows-msvc.zip adrlint-aarch64-pc-windows-msvc.zip; do
               if ! grep -Fxq "$asset" <<< "$assets"; then
                 release_assets_exist=false
               fi
@@ -295,17 +296,26 @@ jobs:
         run: gh release upload "$TAG" "adrlint-${TRIPLE}.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
 
   build-windows:
-    name: Build Windows / x86_64-pc-windows-msvc
+    name: Build Windows / ${{ matrix.triple }}
     needs: [meta, verify, create_release]
     if: needs.verify.result == 'success' && needs.create_release.result == 'success'
     # rumdl depends on tikv-jemallocator on every target except msvc and wasm; tikv-jemalloc-sys
-    # cannot link against the mingw runtime, so the Windows archive is built on Windows with the
-    # MSVC toolchain rather than cross-compiled on Linux.
-    runs-on: windows-latest
+    # cannot link against the mingw runtime, so the Windows archives are built on Windows with the
+    # MSVC toolchain rather than cross-compiled. The arm64 archive is built natively on Windows on
+    # Arm, which needs no emulation.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - triple: x86_64-pc-windows-msvc
+            os: windows-latest
+          - triple: aarch64-pc-windows-msvc
+            os: windows-11-arm
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     env:
-      TRIPLE: x86_64-pc-windows-msvc
+      TRIPLE: ${{ matrix.triple }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -317,12 +327,12 @@ jobs:
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: "1.94"
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.triple }}
 
       - name: Setup cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          key: x86_64-pc-windows-msvc
+          key: ${{ matrix.triple }}
 
       - name: Build release binary
         shell: pwsh
@@ -429,15 +439,74 @@ jobs:
           git config --global --add safe.directory "${GITHUB_WORKSPACE:-/__w/adrlint/adrlint}"
           gh release upload "$TAG" "adrlint-${TRIPLE}.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
 
+  build-linux-musl:
+    name: Build Linux musl / ${{ matrix.triple }}
+    needs: [meta, verify, create_release]
+    if: needs.verify.result == 'success' && needs.create_release.result == 'success'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - triple: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+          - triple: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.94"
+          targets: ${{ matrix.triple }}
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: ${{ matrix.triple }}
+
+      # cross builds inside a container that carries the musl toolchain, so the Rust static target
+      # and `tikv-jemalloc-sys` (which rumdl links on musl too) build without a feature override.
+      - name: Install cross
+        env:
+          CROSS_VERSION: "0.2.5"
+        run: cargo install cross --locked --version "$CROSS_VERSION"
+
+      - name: Build release binary
+        env:
+          TRIPLE: ${{ matrix.triple }}
+        run: cross build --release --bin adrlint --target "$TRIPLE"
+
+      - name: Package archive
+        env:
+          TRIPLE: ${{ matrix.triple }}
+        run: |
+          set -euo pipefail
+          tar czf "adrlint-${TRIPLE}.tar.gz" -C "target/${TRIPLE}/release" adrlint
+
+      - name: Upload to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          TRIPLE: ${{ matrix.triple }}
+        run: gh release upload "$TAG" "adrlint-${TRIPLE}.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
+
   checksums:
     name: Generate and upload checksums
-    needs: [meta, build-macos, build-windows, build-linux]
-    if: needs.build-macos.result == 'success' && needs.build-windows.result == 'success' && needs.build-linux.result == 'success'
+    needs: [meta, build-macos, build-windows, build-linux, build-linux-musl]
+    if: needs.build-macos.result == 'success' && needs.build-windows.result == 'success' && needs.build-linux.result == 'success' && needs.build-linux-musl.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Verify all 5 archives are present, then generate checksums
+      - name: Verify all 8 archives are present, then generate checksums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.meta.outputs.tag }}
@@ -450,9 +519,12 @@ jobs:
           expected=(
             "adrlint-x86_64-unknown-linux-gnu.tar.gz"
             "adrlint-aarch64-unknown-linux-gnu.tar.gz"
+            "adrlint-x86_64-unknown-linux-musl.tar.gz"
+            "adrlint-aarch64-unknown-linux-musl.tar.gz"
             "adrlint-aarch64-apple-darwin.tar.gz"
             "adrlint-x86_64-apple-darwin.tar.gz"
             "adrlint-x86_64-pc-windows-msvc.zip"
+            "adrlint-aarch64-pc-windows-msvc.zip"
           )
 
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' > /tmp/assets.txt || true
@@ -464,10 +536,10 @@ jobs:
             fi
           done
           if [ "$missing" -gt 0 ]; then
-            echo "::error::Release incomplete: $missing of 5 archives missing."
+            echo "::error::Release incomplete: $missing of 8 archives missing."
             exit 1
           fi
-          echo "All 5 archives present"
+          echo "All 8 archives present"
 
           for asset in "${expected[@]}"; do
             gh release download "$tag" --repo "$GITHUB_REPOSITORY" -p "$asset" -O "$asset"
@@ -480,7 +552,7 @@ jobs:
     name: Publish GitHub release
     needs: [meta, verify, checksums]
     # `checksums` is skipped only when `meta` found every archive already on the release (a re-run),
-    # and this job verifies all six assets itself before promoting, so a skip is not trusted blindly.
+    # and this job verifies all nine assets itself before promoting, so a skip is not trusted blindly.
     if: needs.meta.result == 'success' && needs.verify.result == 'success' && (needs.checksums.result == 'success' || needs.checksums.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
@@ -499,9 +571,12 @@ jobs:
           required=(
             "adrlint-x86_64-unknown-linux-gnu.tar.gz"
             "adrlint-aarch64-unknown-linux-gnu.tar.gz"
+            "adrlint-x86_64-unknown-linux-musl.tar.gz"
+            "adrlint-aarch64-unknown-linux-musl.tar.gz"
             "adrlint-aarch64-apple-darwin.tar.gz"
             "adrlint-x86_64-apple-darwin.tar.gz"
             "adrlint-x86_64-pc-windows-msvc.zip"
+            "adrlint-aarch64-pc-windows-msvc.zip"
             "adrlint_${version}_checksums.txt"
           )
 

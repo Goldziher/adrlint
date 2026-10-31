@@ -40,12 +40,14 @@ consistent and functional.
 
 ### Targets
 
-`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`,
-`aarch64-apple-darwin`, `x86_64-pc-windows-msvc`.
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`,
+`aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`,
+`x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc`.
 
-The Windows archive is built on `windows-latest`, not cross-compiled: rumdl depends on
-`tikv-jemallocator` on every target except msvc and wasm, and `tikv-jemalloc-sys` cannot link for
-the mingw triple, so the MSVC target is the only Windows one published.
+The Windows archives are built natively on `windows-latest` and `windows-11-arm`, not
+cross-compiled: rumdl depends on `tikv-jemallocator` on every target except msvc and wasm, and
+`tikv-jemalloc-sys` cannot link for the mingw triple. The musl archives are built with `cross`,
+whose container carries the musl toolchain jemalloc needs.
 
 ### Guidelines
 

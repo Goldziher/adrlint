@@ -17,39 +17,36 @@ const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 // Must stay in step with the archives .github/workflows/publish.yaml uploads.
 const TRIPLES = {
   "Windows_NT:x64": "x86_64-pc-windows-msvc",
-  "Linux:x64": "x86_64-unknown-linux-gnu",
-  "Linux:arm64": "aarch64-unknown-linux-gnu",
+  "Windows_NT:arm64": "aarch64-pc-windows-msvc",
+  "Linux:x64:glibc": "x86_64-unknown-linux-gnu",
+  "Linux:arm64:glibc": "aarch64-unknown-linux-gnu",
+  "Linux:x64:musl": "x86_64-unknown-linux-musl",
+  "Linux:arm64:musl": "aarch64-unknown-linux-musl",
   "Darwin:x64": "x86_64-apple-darwin",
   "Darwin:arm64": "aarch64-apple-darwin",
 };
 
-function assertGlibc() {
-  // The Linux archives are gnu-linked. On a musl host (Alpine) they resolve at
-  // download time and then fail at exec with a bare "not found", so say so here.
+function isMusl() {
+  // Node reports the runtime libc in its diagnostic report: glibc sets glibcVersionRuntime, musl
+  // leaves it unset. Older or minimal builds without a report fall back to Alpine's release file.
   const report = typeof process.report?.getReport === "function" ? process.report.getReport() : null;
-  if (report && report.header && report.header.glibcVersionRuntime) {
-    return;
+  if (report && report.header) {
+    return !report.header.glibcVersionRuntime;
   }
-  if (fs.existsSync("/etc/alpine-release")) {
-    throw new Error(
-      "musl-based Linux (Alpine) is not supported: only gnu-linked Linux archives are published. Build from source with `cargo install adrlint`.",
-    );
-  }
+  return fs.existsSync("/etc/alpine-release");
 }
 
 function getPlatformTriple() {
   const type = os.type();
   const arch = os.arch();
-  const triple = TRIPLES[`${type}:${arch}`];
+  const libc = type === "Linux" ? (isMusl() ? "musl" : "glibc") : null;
+  const key = libc ? `${type}:${arch}:${libc}` : `${type}:${arch}`;
+  const triple = TRIPLES[key];
 
   if (!triple) {
     throw new Error(
-      `No prebuilt adrlint binary for ${type} ${arch}. Supported: ${Object.keys(TRIPLES).join(", ")}. Build from source with \`cargo install adrlint\`.`,
+      `No prebuilt adrlint binary for ${key}. Supported: ${Object.keys(TRIPLES).join(", ")}. Build from source with \`cargo install adrlint\`.`,
     );
-  }
-
-  if (type === "Linux") {
-    assertGlibc();
   }
 
   return triple;
