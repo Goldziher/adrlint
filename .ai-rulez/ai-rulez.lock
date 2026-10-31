@@ -4,7 +4,13 @@
 version = 1
 ai_rulez_version = '5.9.2'
 scope = 'all'
-tree = 'sha256:a063b57487a5db1ac2d13994f8666091ad02e37d6fd114db63e7542684f9f0b3'
+tree = 'sha256:50fb739adcdbfedc04626fa879301de6710779d42f8aaccbc42a22dad53c47d3'
+
+[[served]]
+name = 'architecture'
+source = '.ai-rulez/skills/architecture/SKILL.md'
+commit = ''
+digest = 'sha256:4437dba96f1310293fd48fafeac316b0e95e78974749ef11ed4f08310b6ab8e6'
 
 [[served]]
 name = 'build'
@@ -146,12 +152,6 @@ digest = 'sha256:6e41ae4ac949913d19fe0a5d21b4a43a99223bfb1377c82ab2011c06332d6bb
 
 [[item]]
 kind = 'context'
-id = 'architecture'
-path = 'context/architecture.md'
-digest = 'sha256:7ba66668ce316c8216bfae6a478c5e8313e7170cf13ea5cbb7dbfcd4a60f5d2e'
-
-[[item]]
-kind = 'context'
 id = 'development-setup'
 path = 'context/development-setup.md'
 digest = 'sha256:2ff414becce618a8deb4a96d91e45a8c3e50859ebc7e20e1425548af754d7a78'
@@ -203,3 +203,9 @@ kind = 'rule'
 id = 'version-synchronization'
 path = 'rules/version-synchronization.md'
 digest = 'sha256:8cbc7a7c0f94c55bbab408da6e7d4bfd281951d6c848ea32e83287b4d36f30af'
+
+[[item]]
+kind = 'skill'
+id = 'architecture'
+path = 'skills/architecture'
+digest = 'sha256:b213d3905ce7980a5230ba89b035f085ea5a96b132765dd479962352a6bcbf20'

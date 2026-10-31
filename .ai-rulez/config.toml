@@ -10,7 +10,9 @@ builtins = ['rust', 'default-commands']
 allow_overrides = ["claude:review"]
 
 [lint.builtin_names]
-allow = ["opencode:review"]
+# `fix` and `review` are this project's own commands; their names also exist as
+# harness built-ins (copilot, cursor), so the collision is intentional.
+allow = ["opencode:review", "copilot:fix", "cursor:review"]
 
 [mcp]
 self_server_command = ["ai-rulez", "mcp"]

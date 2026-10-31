@@ -1,6 +1,7 @@
 {
   "version": "1",
   "files": [
+    ".agents/skills/architecture/SKILL.md",
     ".agents/skills/build/SKILL.md",
     ".agents/skills/build/agents/openai.yaml",
     ".agents/skills/code-quality-standards/SKILL.md",
@@ -31,6 +32,7 @@
     ".claude/agents/security-auditor.md",
     ".claude/agents/test-writer.md",
     ".claude/settings.json",
+    ".claude/skills/architecture/SKILL.md",
     ".claude/skills/build/SKILL.md",
     ".claude/skills/code-quality-standards/SKILL.md",
     ".claude/skills/config-placement/SKILL.md",
