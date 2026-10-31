@@ -5,7 +5,7 @@
 ### Prerequisites
 
 - Rust 1.94+ with `cargo`
-- `task` (go-task) for the Taskfile
+- `mise` for the toolchain and tasks (`mise install`, then `mise run <task>`)
 - `poly` and `ai-rulez` 5.x for governance checks
 - Node.js 24+ and pnpm 12+ only for the npm wrapper
 - Python 3.10+ only for the PyPI wrapper
@@ -29,7 +29,7 @@ poly lint .
 poly fmt --check .
 ```
 
-Or `task check`, which runs lint and tests.
+Or `mise run check`, which runs lint and tests.
 
 ## Adding a rule
 
@@ -61,7 +61,7 @@ A rule that needs a network call is `#[ignore]`d by default and gated behind con
 
 ## Pre-commit hooks
 
-Install with `task setup` (or `poly hooks install`). The hooks run lint, format and file-safety
+Install with `mise run setup` (or `poly hooks install`). The hooks run lint, format and file-safety
 checks on every commit, and validate the commit message. Run them across the tree with:
 
 ```bash
@@ -74,8 +74,8 @@ poly hooks run pre-commit --all-files
 hand. After changing `.ai-rulez/`, run:
 
 ```bash
-task ai:validate
-ai-rulez generate --no-local
+mise run ai:validate
+npx -y ai-rulez@latest generate --no-local
 ```
 
 ## Distribution and releases

@@ -14,7 +14,7 @@ x-ai-rulez:
 
 - Rust 1.94+ (`rustc --version`) — rumdl's current MSRV
 - Cargo (included with Rust)
-- Task runner (`task --version`) for task automation
+- mise (`mise --version`) for the toolchain and task automation
 - Node.js 24+ and pnpm 12+ only when verifying the npm wrapper
 - Python 3.10+ only when verifying the PyPI wrapper
 
@@ -53,12 +53,12 @@ poly fmt --check .
 ### Task runner
 
 ```bash
-task          # list tasks
-task setup    # install dependencies and hooks
-task build    # release build
-task test     # test suite
-task lint     # poly lint
-task check    # lint plus test
-task format   # poly fmt --fix
-task clean    # remove build artifacts
+mise tasks          # list tasks
+mise run setup      # install tools, dependencies and hooks
+mise run build      # release build
+mise run test       # test suite
+mise run lint       # poly lint
+mise run check      # lint plus test
+mise run format     # poly fmt --fix
+mise run clean      # remove build artifacts
 ```

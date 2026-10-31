@@ -2,9 +2,9 @@
 # Refresh it with `ai-rulez lock`; `ai-rulez generate --locked` fails when it is stale.
 
 version = 1
-ai_rulez_version = '5.9.2'
+ai_rulez_version = '5.9.7'
 scope = 'all'
-tree = 'sha256:50fb739adcdbfedc04626fa879301de6710779d42f8aaccbc42a22dad53c47d3'
+tree = 'sha256:4b37f2f95ed5e5f7c949286995f154f22bc6fe09fb4406e7db81ad411b3a08fe'
 
 [[served]]
 name = 'architecture'
@@ -154,7 +154,7 @@ digest = 'sha256:6e41ae4ac949913d19fe0a5d21b4a43a99223bfb1377c82ab2011c06332d6bb
 kind = 'context'
 id = 'development-setup'
 path = 'context/development-setup.md'
-digest = 'sha256:2ff414becce618a8deb4a96d91e45a8c3e50859ebc7e20e1425548af754d7a78'
+digest = 'sha256:e3fc9b56d6fd9d617f82333374517a81ef1bdf0558e4d924cbce5b0a4309eac1'
 
 [[item]]
 kind = 'context'

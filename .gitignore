@@ -71,7 +71,7 @@ GEMINI.md
 .opencode/commands/
 .pi/agents/
 .pi/prompts/
-opencode.json
+/opencode.json
 # END ai-rulez
 
 poly.local.toml
