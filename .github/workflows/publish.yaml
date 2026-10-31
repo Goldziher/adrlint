@@ -714,11 +714,12 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
+      # The tag checkout may predate mise.toml; restore it from the workflow commit. ~keep
       - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org"
+          tools: node
+          config-ref: ${{ github.sha }}
 
       - name: Publish to npm
         env:
@@ -754,10 +755,12 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
+      # The tag checkout may predate mise.toml; restore it from the workflow commit. ~keep
       - name: Setup Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        uses: xberg-io/actions/setup-mise@v1
         with:
-          python-version: "3.14"
+          tools: python
+          config-ref: ${{ github.sha }}
 
       - name: Build Python package
         run: |
