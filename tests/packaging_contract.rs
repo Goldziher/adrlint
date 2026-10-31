@@ -102,11 +102,24 @@ fn uses_entries(text: &str) -> Vec<String> {
         .collect()
 }
 
-fn is_commit_sha(value: &str) -> bool {
-    value.len() == 40
-        && value
-            .chars()
-            .all(|character| matches!(character, '0'..='9' | 'a'..='f'))
+/// A bare major tag such as `v7`: the org pins every action to its floating major tag.
+fn is_major_tag(value: &str) -> bool {
+    value
+        .strip_prefix('v')
+        .is_some_and(|digits| !digits.is_empty() && digits.chars().all(|character| character.is_ascii_digit()))
+}
+
+/// Actions whose upstream publishes no major tag, so a full version tag is the shortest pin.
+const FULL_TAG_ACTIONS: &[&str] = &["pypa/gh-action-pypi-publish"];
+
+fn is_full_version_tag(value: &str) -> bool {
+    value.strip_prefix('v').is_some_and(|version| {
+        let parts: Vec<&str> = version.split('.').collect();
+        parts.len() == 3
+            && parts
+                .iter()
+                .all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()))
+    })
 }
 
 /// The block belonging to one top-level job, bounded by the next job key (indented exactly two
@@ -147,7 +160,7 @@ fn no_expression_is_interpolated_inside_a_run_block() {
 }
 
 #[test]
-fn every_action_reference_is_pinned_to_a_commit() {
+fn every_action_reference_is_pinned_to_a_major_tag() {
     for (name, text) in action_yaml_files() {
         for reference in uses_entries(&text) {
             if reference.starts_with("./") {
@@ -160,9 +173,10 @@ fn every_action_reference_is_pinned_to_a_commit() {
                 !repository.is_empty(),
                 "{name}: `uses: {reference}` names no repository"
             );
+            let full_tag_allowed = FULL_TAG_ACTIONS.contains(&repository) && is_full_version_tag(revision);
             assert!(
-                is_commit_sha(revision),
-                "{name}: `uses: {reference}` must be pinned to a full 40-character commit SHA"
+                is_major_tag(revision) || full_tag_allowed,
+                "{name}: `uses: {reference}` must be pinned to a bare major tag such as `v1`"
             );
         }
     }
@@ -735,7 +749,7 @@ fn the_scoop_script_is_executable() {
 fn the_text_parsers_find_the_constructs_they_assert_about() {
     let text = read(".github/workflows/publish.yaml");
     assert!(!run_blocks(&text).is_empty());
-    assert!(uses_entries(&text).contains(&"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1".to_owned()));
+    assert!(uses_entries(&text).contains(&"actions/checkout@v7".to_owned()));
     assert!(job_block(&text, "meta").contains("Validate the release tag"));
     assert!(job_block(&text, "publish_scoop").contains("Update Scoop manifest"));
     assert!(
