@@ -106,6 +106,10 @@ pub struct AdrConfig {
     pub paths: Vec<PathBuf>,
     #[serde(default = "default_start")]
     pub start: u32,
+    /// Whether a configuration layer named `start`. Without one, a log may start at `0000` or
+    /// `0001`: MADR itself starts at `0000`, while most projects and `adrlint init` use `0001`.
+    #[serde(skip)]
+    pub start_configured: bool,
     #[serde(default)]
     pub allow_gaps: bool,
     /// Whether the roots are searched for nested ADR logs, as `--recursive` does.
@@ -123,6 +127,7 @@ impl Default for AdrConfig {
             dir: default_dir(),
             paths: Vec::new(),
             start: default_start(),
+            start_configured: false,
             allow_gaps: false,
             recursive: false,
             dir_configured: false,
@@ -261,6 +266,7 @@ impl Layer {
         }
         if let Some(start) = self.adr.start {
             config.adr.start = start;
+            config.adr.start_configured = true;
         }
         if let Some(allow_gaps) = self.adr.allow_gaps {
             config.adr.allow_gaps = allow_gaps;
@@ -538,7 +544,8 @@ dir = {dir}
 paths = []
 # Search the roots for nested ADR logs, as `--recursive` does.
 recursive = false
-# 0 or 1. The base is fixed for the life of the directory; do not change it later.
+# 0 or 1. The base is fixed for the life of the directory; do not change it later. When the key is
+# absent, a log may start at either 0000 or 0001, so zero-configuration discovery accepts both.
 start = {start}
 # Only for imported histories that legitimately start with holes.
 allow_gaps = false
@@ -618,6 +625,20 @@ mod tests {
         let inner: Layer = toml::from_str("[lint]\ncheck_external_links = false\n").unwrap();
         inner.apply_to(&mut config);
         assert!(!config.lint.check_external_links);
+    }
+
+    #[test]
+    fn should_track_whether_start_was_configured() {
+        let config = merged("");
+        assert_eq!(config.adr.start, 1);
+        assert!(
+            !config.adr.start_configured,
+            "the default start must not count as configured"
+        );
+
+        let config = merged("[adr]\nstart = 0\n");
+        assert_eq!(config.adr.start, 0);
+        assert!(config.adr.start_configured);
     }
 
     #[test]

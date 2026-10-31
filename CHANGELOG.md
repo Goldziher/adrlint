@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- `MADR04` accepts `as` only when it introduces the rationale, directly after the chosen option's
+  separating comma (`, as ...`), as `because` is. An `as` anywhere later in the sentence no longer
+  satisfies the check: `Chosen option: "a seam", with ort as the default backend.` and
+  `Chosen option: "Redis as a cache".` now report a missing rationale.
+- `MADR41a` accepts a log that starts at `0000` or `0001` when no configuration layer sets
+  `[adr].start`, so zero-configuration discovery works for a MADR log that begins at `0000`. An
+  explicit `start` still fixes the base exactly; `adrlint init --start` keeps its flags and still
+  defaults to `1`.
+
 ### Fixed
 
 - The test suite passes on Windows again. A checkout with `core.autocrlf` turned the test fixtures'

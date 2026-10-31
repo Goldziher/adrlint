@@ -15,7 +15,9 @@ const CHOSEN_OPTION: [&str; 3] = ["chosen option", "chosen alternative", "select
 
 /// Keywords that introduce the rationale for the chosen option, lowercased. Each matches as a whole
 /// word, so the plurals are listed.
-const RATIONALE: [&str; 12] = [
+///
+/// `as` is not listed: it counts only in the `, as ...` form that introduces the rationale.
+const RATIONALE: [&str; 11] = [
     "rationale",
     "rationales",
     "reasoning",
@@ -27,7 +29,6 @@ const RATIONALE: [&str; 12] = [
     "motivation",
     "motivations",
     "motivated",
-    "as",
 ];
 
 /// A section the MADR template defines.
@@ -195,7 +196,7 @@ fn check_decision_outcome(document: &Document, path: &Path, diagnostics: &mut Ve
 
     let text = chosen.text.to_lowercase();
     let rationale_from = keyword_span(&text, &CHOSEN_OPTION, 0).map_or(0, |(_, end)| option_end(&text, end));
-    if keyword_span(&text, &RATIONALE, rationale_from).is_none() {
+    if keyword_span(&text, &RATIONALE, rationale_from).is_none() && !as_introduces_rationale(&text, rationale_from) {
         diagnostics.push(Diagnostic::error(
             "MADR04",
             path,
@@ -436,7 +437,7 @@ fn keyword_index(text: &str, keywords: &[&str]) -> Option<usize> {
 
 /// Where the option named after the chosen-option keyword ends, so a keyword inside the option's
 /// name is not read as its rationale: after the closing quote when the option is quoted
-/// (`Chosen option: "…"`), else after the first comma, else at the end of the keyword
+/// (`Chosen option: "…"`), else at the first comma, else at the end of the keyword
 /// (`keyword_end`). A quote later in the sentence belongs to the rationale, not the option.
 fn option_end(text: &str, keyword_end: usize) -> usize {
     let rest = &text[keyword_end..];
@@ -446,8 +447,25 @@ fn option_end(text: &str, keyword_end: usize) -> usize {
         .and_then(|name| name.find('"'))
         .map(|close| keyword_end + open + 1 + close + 1);
     quoted
-        .or_else(|| rest.find(',').map(|comma| keyword_end + comma + 1))
+        .or_else(|| rest.find(',').map(|comma| keyword_end + comma))
         .unwrap_or(keyword_end)
+}
+
+/// Whether `, as` right after the option introduces the rationale, as `, because` does.
+///
+/// `as` is not a rationale keyword on its own: `Chosen option: "a seam", with ort as the default`
+/// and `Chosen option: "Redis as a cache"` must still be reported as missing one.
+fn as_introduces_rationale(text: &str, from: usize) -> bool {
+    let Some(rest) = text[from..].trim_start().strip_prefix(',') else {
+        return false;
+    };
+    let rest = rest.trim_start();
+    rest.strip_prefix("as").is_some_and(|after| {
+        !after
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_alphanumeric())
+    })
 }
 
 fn block_start(block: &Block) -> usize {
@@ -579,7 +597,6 @@ Chosen option: \"Rust\", because it is fast.
             "Justification: it is fast.",
             "Motivation: it is fast.",
             "Motivated by speed.",
-            "as it is fast.",
         ] {
             let source = VALID.replace(
                 "Chosen option: \"Rust\", because it is fast.",
@@ -621,6 +638,10 @@ Chosen option: \"Rust\", because it is fast.
             "Chosen option: \"Use X as Y\".",
             "Chosen option: \"Reason about it\".",
             "Chosen option: Redis as a cache, deployed once.",
+            "Chosen option: \"a seam\", with ort as the default backend.",
+            "Chosen option: \"Redis as a cache\".",
+            "Chosen option: \"Redis\".",
+            "Chosen option: **Redis as a cache**.",
         ] {
             let source = VALID.replace("Chosen option: \"Rust\", because it is fast.", lead);
             assert_eq!(findings(&source), [("MADR04", 14)], "{lead}");
@@ -628,9 +649,24 @@ Chosen option: \"Rust\", because it is fast.
         for lead in [
             "Chosen option: \"Use X as Y\", because it is fast.",
             "Chosen option: Rust, because it is \"fast\".",
+            "Chosen option: \"Rust\", as it is fast.",
+            "Chosen option: Rust, as it is fast.",
+            "Chosen option: **Rust**, as it is fast.",
+            "Chosen option: `Rust`, because it is fast.",
         ] {
             let source = VALID.replace("Chosen option: \"Rust\", because it is fast.", lead);
             assert_eq!(findings(&source), [], "{lead}");
+        }
+    }
+
+    #[test]
+    fn should_require_a_comma_before_as() {
+        for lead in [
+            "Chosen option: \"Rust\". as it is fast.",
+            "Chosen option: \"Rust\", and it is as fast as the alternative.",
+        ] {
+            let source = VALID.replace("Chosen option: \"Rust\", because it is fast.", lead);
+            assert_eq!(findings(&source), [("MADR04", 14)], "{lead}");
         }
     }
 

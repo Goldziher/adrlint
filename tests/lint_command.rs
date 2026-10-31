@@ -212,3 +212,64 @@ fn should_leave_an_upper_case_index_extension_out_of_the_log() {
     let output = run(adrlint().arg("lint").arg("--format").arg("json").arg(&log));
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
 }
+
+fn write_log(directory: &TempDir, name: &str) -> PathBuf {
+    let log = directory.path().join("adrs");
+    std::fs::create_dir_all(&log).expect("creating the log");
+    std::fs::write(
+        log.join(name),
+        include_str!("../fixtures/adr/valid/0001-record-architecture-decisions.md"),
+    )
+    .expect("writing the ADR");
+    log
+}
+
+#[test]
+fn should_accept_a_zero_based_log_discovered_without_configuration() {
+    let directory = TempDir::new().expect("temporary directory");
+    write_log(&directory, "0000-record-architecture-decisions.md");
+
+    let output = run(adrlint().current_dir(directory.path()).arg("lint"));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn should_accept_a_one_based_log_discovered_without_configuration() {
+    let directory = TempDir::new().expect("temporary directory");
+    write_log(&directory, "0001-record-architecture-decisions.md");
+
+    let output = run(adrlint().current_dir(directory.path()).arg("lint"));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn should_report_a_zero_based_log_against_an_explicit_start_of_one() {
+    let directory = TempDir::new().expect("temporary directory");
+    write_log(&directory, "0000-record-architecture-decisions.md");
+    std::fs::write(
+        directory.path().join(".adrlint.toml"),
+        "[adr]\ndir = \"adrs\"\nstart = 1\n",
+    )
+    .expect("writing the configuration");
+
+    let output = run(adrlint()
+        .current_dir(directory.path())
+        .arg("lint")
+        .arg("--format")
+        .arg("json"));
+    assert_eq!(output.status.code(), Some(1));
+    let diagnostics: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).expect("parsing JSON");
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic["code"] == "MADR41a"),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}

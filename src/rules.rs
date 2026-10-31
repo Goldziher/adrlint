@@ -146,7 +146,7 @@ pub fn check_directory_with_images(
     referenced: &BTreeSet<PathBuf>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    check_start(directory, config.start, &mut diagnostics);
+    check_start(directory, config.start, config.start_configured, &mut diagnostics);
     if !config.allow_gaps {
         check_gaps(directory, &mut diagnostics);
     }
@@ -158,10 +158,11 @@ pub fn check_directory_with_images(
 
 /// `MADR41a`: the first ADR number is the configured base.
 ///
-/// `[adr].start` chooses `0000` or `0001` once for the life of the directory. Accepting either
-/// value regardless of the configuration would let a directory silently switch bases, so the
-/// smallest number must equal the configured base exactly.
-fn check_start(directory: &Directory, start: u32, diagnostics: &mut Vec<Diagnostic>) {
+/// `[adr].start` chooses `0000` or `0001` once for the life of the directory. When no layer sets
+/// it, either base is accepted, because MADR's own log starts at `0000` and a project cannot express
+/// that without a configuration file. When it is set, the smallest number must equal it exactly:
+/// accepting either value would let a directory silently switch bases.
+fn check_start(directory: &Directory, start: u32, configured: bool, diagnostics: &mut Vec<Diagnostic>) {
     let Some((number, file)) = directory
         .adrs
         .iter()
@@ -170,12 +171,21 @@ fn check_start(directory: &Directory, start: u32, diagnostics: &mut Vec<Diagnost
     else {
         return;
     };
-    if number != start {
+    if configured {
+        if number != start {
+            diagnostics.push(Diagnostic::error(
+                "MADR41a",
+                &file.path,
+                1,
+                format!("expected the first ADR number to be {start:04}, found {number:04}"),
+            ));
+        }
+    } else if !matches!(number, 0 | 1) {
         diagnostics.push(Diagnostic::error(
             "MADR41a",
             &file.path,
             1,
-            format!("expected the first ADR number to be {start:04}, found {number:04}"),
+            format!("expected the first ADR number to be 0000 or 0001, found {number:04}"),
         ));
     }
 }
@@ -287,6 +297,21 @@ mod tests {
     }
 
     #[test]
+    fn should_accept_either_base_when_start_is_not_configured() {
+        for names in [
+            &["0000-zero.md", "0001-one.md"][..],
+            &["0001-one.md", "0002-two.md"][..],
+        ] {
+            let diagnostics = check_directory(&directory(names), &AdrConfig::default());
+            assert!(
+                diagnostics.is_empty(),
+                "an unconfigured log should accept {names:?}, found {:?}",
+                codes(&diagnostics)
+            );
+        }
+    }
+
+    #[test]
     fn should_accept_the_configured_start() {
         for (start, names) in [
             (0, &["0000-zero.md", "0001-one.md"][..]),
@@ -294,6 +319,7 @@ mod tests {
         ] {
             let config = AdrConfig {
                 start,
+                start_configured: true,
                 ..AdrConfig::default()
             };
             let diagnostics = check_directory(&directory(names), &config);
@@ -310,6 +336,7 @@ mod tests {
         for (start, names) in [(0, &["0001-one.md"][..]), (1, &["0000-zero.md", "0001-one.md"][..])] {
             let config = AdrConfig {
                 start,
+                start_configured: true,
                 ..AdrConfig::default()
             };
             let diagnostics = check_directory(&directory(names), &config);
@@ -322,9 +349,14 @@ mod tests {
     }
 
     #[test]
-    fn should_report_a_start_above_one() {
+    fn should_report_a_first_number_that_is_neither_zero_nor_one() {
         let diagnostics = check_directory(&directory(&["0003-three.md", "0004-four.md"]), &AdrConfig::default());
         assert_eq!(codes(&diagnostics), ["MADR41a"]);
+        assert!(
+            diagnostics[0].message.contains("0000 or 0001"),
+            "{}",
+            diagnostics[0].message
+        );
     }
 
     #[test]

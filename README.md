@@ -453,8 +453,10 @@ adrlint init [--dir DIR] [--start 0|1] [--force]
 ```
 
 Writes `.adrlint.toml`, creates the ADR directory, and adds
-`NNNN-record-architecture-decisions.md` when the directory is empty. `--start` defaults to `1`.
-`--force` overwrites an existing configuration; it never overwrites an ADR.
+`NNNN-record-architecture-decisions.md` when the directory is empty. `--start` defaults to `1`;
+pass `--start 0` for a log that begins at `0000`, as MADR's own does. A log with no `start` in any
+configuration file may start at either `0000` or `0001`, so zero-configuration discovery accepts
+both. `--force` overwrites an existing configuration; it never overwrites an ADR.
 
 ### `adrlint new`
 
@@ -511,10 +513,12 @@ across releases; a new check gets a new ID.
 | `MADR08a` | The title is at the top of the file                          |
 | `MADR08b` | Level-2 sections appear in template order                    |
 
-`MADR04` looks for `because`, `as`, `rationale(s)`, `reason(s)`, `reasoning`, `justification(s)`,
-`motivation(s)` or `motivated` as a whole word after the chosen option, so `as` inside `basemind` is
-not a rationale. The option itself is skipped: the search starts after its closing quote, or after
-the first comma when it is not quoted.
+`MADR04` looks for `because`, `rationale(s)`, `reason(s)`, `reasoning`, `justification(s)`,
+`motivation(s)` or `motivated` as a whole word after the chosen option, so `reason` inside `treason`
+is not a rationale. `as` counts only when it introduces the rationale, directly after the option's
+separating comma (`, as ...`); an `as` later in the sentence is part of the description. The option
+itself is skipped: the search starts after its closing quote, or at the first comma when it is not
+quoted.
 
 ### Links (`MADR11`–`MADR12`)
 
@@ -554,13 +558,13 @@ place the URL is cited. Enabling it lets `lint` contact every host your ADRs lin
 
 ### Directory (`MADR41`–`MADR44`)
 
-| ID        | Check                                          |
-| --------- | ---------------------------------------------- |
-| `MADR41a` | The first number is `[adr].start` (`0` or `1`) |
-| `MADR41b` | No number is missing between two ADRs          |
-| `MADR42`  | No non-ADR file sits in the ADR directory¹     |
-| `MADR43`  | No two ADRs share a number                     |
-| `MADR44`  | File names match `NNNN-brief-description.md`   |
+| ID        | Check                                                          |
+| --------- | -------------------------------------------------------------- |
+| `MADR41a` | The first number is `[adr].start`, or `0`/`1` when it is unset |
+| `MADR41b` | No number is missing between two ADRs                          |
+| `MADR42`  | No non-ADR file sits in the ADR directory¹                     |
+| `MADR43`  | No two ADRs share a number                                     |
+| `MADR44`  | File names match `NNNN-brief-description.md`                   |
 
 ¹ Images (`png`, `jpg`, `jpeg`, `gif`, `svg`, `webp`) that an ADR in the same directory links to are
 allowed.
@@ -607,7 +611,7 @@ project. `--config` applies one file to every path.
 dir = "docs/adr"
 # Extra ADR logs used when no paths are passed. Directories or globs, relative to the project root.
 paths = ["adrs/*", "product/adrs/*"]
-start = 1 # 0 or 1; used by init and new
+start = 1 # 0 or 1; used by init and new; unset accepts either
 allow_gaps = false # only for imported histories
 recursive = false # search the roots for nested ADR logs, as --recursive does
 

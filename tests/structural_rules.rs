@@ -118,6 +118,7 @@ fn should_compare_the_first_number_with_the_configured_start() {
     ] {
         let config = AdrConfig {
             start,
+            start_configured: true,
             ..AdrConfig::default()
         };
         let found = check_directory(&directory(name), &config)
