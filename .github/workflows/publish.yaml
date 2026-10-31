@@ -187,6 +187,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
+      # ~keep No rust-toolchain.toml; release builds install the Rust 1.94 pinned here.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -265,6 +266,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
+      # ~keep No rust-toolchain.toml; release builds install the Rust 1.94 pinned here.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -323,6 +325,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
+      # ~keep No rust-toolchain.toml; release builds install the Rust 1.94 pinned here.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -464,6 +467,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
+      # ~keep No rust-toolchain.toml; release builds install the Rust 1.94 pinned here.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -671,6 +675,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
+      # ~keep No rust-toolchain.toml; release builds install the Rust 1.94 pinned here.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
