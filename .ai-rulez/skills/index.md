@@ -1,3 +1,3 @@
 # Subdirectories
 
-* [architecture](architecture/index.md)
+- [architecture](architecture/index.md)
