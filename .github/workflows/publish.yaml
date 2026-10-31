@@ -71,7 +71,7 @@ jobs:
           echo "Python version: $python_version"
 
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
@@ -182,19 +182,19 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: "1.94"
           components: clippy, rustfmt
 
       - name: Setup cache
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        uses: Swatinem/rust-cache@v2
         with:
           key: verify
 
@@ -208,7 +208,7 @@ jobs:
         run: cargo test --locked
 
       - name: Check licenses, bans, advisories and sources
-        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
 
@@ -221,7 +221,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
@@ -260,19 +260,19 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: "1.94"
           targets: ${{ matrix.triple }}
 
       - name: Setup cache
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.triple }}
 
@@ -318,19 +318,19 @@ jobs:
       TRIPLE: ${{ matrix.triple }}
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: "1.94"
           targets: ${{ matrix.triple }}
 
       - name: Setup cache
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.triple }}
 
@@ -380,7 +380,7 @@ jobs:
             rustup_init_sha256: e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
@@ -459,19 +459,19 @@ jobs:
             os: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: "1.94"
           targets: ${{ matrix.triple }}
 
       - name: Setup cache
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.triple }}
 
@@ -640,7 +640,7 @@ jobs:
     if: needs.verify.result == 'success' && needs.finalize_release.result == 'success' && needs.meta.outputs.release_assets_exist != 'true'
     permissions:
       contents: read
-    uses: xberg-io/actions/.github/workflows/reusable-binstall-verify.yml@793d3a4d37a17009d91cce29f2825eda570d2abd # v1.27.1
+    uses: xberg-io/actions/.github/workflows/reusable-binstall-verify.yml@v1
     with:
       package-name: adrlint
       binary-name: adrlint
@@ -666,18 +666,18 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: "1.94"
 
       - name: Authenticate to crates.io
-        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
+        uses: rust-lang/crates-io-auth-action@v1
         id: crates_auth
 
       - name: Publish to crates.io
@@ -709,7 +709,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
@@ -750,7 +750,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
@@ -770,7 +770,7 @@ jobs:
           python -m build
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        uses: pypa/gh-action-pypi-publish@v1.14.3
         with:
           packages-dir: pip-package/dist
           skip-existing: true
@@ -784,7 +784,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
@@ -837,7 +837,7 @@ jobs:
       # Deliberately checked out at the workflow revision, not the tag: this job only needs the
       # generator script and the published assets, and older tags may predate the script.
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

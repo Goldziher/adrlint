@@ -12,11 +12,11 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: xberg-io/actions/setup-ai-rulez@79b1c988876f206a3c44369620c6f98ddb95840b # v1.37.0
+      - uses: actions/checkout@v7
+      - uses: xberg-io/actions/setup-ai-rulez@v1
         with:
           ai-rulez-version: "5.9.2"
-      - uses: xberg-io/actions/validate-ai-rulez@79b1c988876f206a3c44369620c6f98ddb95840b # v1.37.0
+      - uses: xberg-io/actions/validate-ai-rulez@v1
         with:
           expected-config-count: "1"
       - name: Verify the lock and generated outputs
