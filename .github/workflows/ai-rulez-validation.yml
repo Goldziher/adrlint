@@ -14,8 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: xberg-io/actions/setup-ai-rulez@v1
-        with:
-          ai-rulez-version: "5.9.2"
       - uses: xberg-io/actions/validate-ai-rulez@v1
         with:
           expected-config-count: "1"
