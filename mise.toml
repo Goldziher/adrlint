@@ -10,5 +10,41 @@ python = "3.13.18"
 node = "26.12.1"
 actionlint = "1.7.12"
 
+[tasks.setup]
+description = "Install all dependencies and initialize the project. Idempotent."
+run = ["mise install", "cargo fetch", { task = "governance:hooks:install" }]
+
+[tasks.build]
+description = "Build the adrlint binary"
+run = "cargo build --release"
+
+[tasks.test]
+description = "Run all tests"
+run = "cargo test"
+
+[tasks."test:verbose"]
+description = "Run tests with verbose output"
+run = "cargo test -- --nocapture"
+
+[tasks.check]
+description = "Run all checks (lint plus test)"
+run = [{ task = "lint" }, { task = "test" }]
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "cargo clean"
+
+[tasks.update]
+description = "Update dependencies and governance hooks"
+run = ["cargo update", "poly hooks update", "poly hooks install"]
+
+[tasks."ai:validate"]
+description = "Validate the ai-rulez configuration and generated outputs"
+run = [
+  "npx -y ai-rulez@latest validate --strict --no-local",
+  "npx -y ai-rulez@latest lock --check",
+  "npx -y ai-rulez@latest generate --no-local --strict-config --check",
+]
+
 [task_config]
 includes = ["mise-tasks", "mise-tasks/shared.toml"]
