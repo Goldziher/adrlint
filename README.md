@@ -117,7 +117,7 @@ uvx adrlint lint               # or: pipx run adrlint lint
 ```
 
 The wheel downloads and caches the matching release binary with the same checksum verification.
-Requires Python 3.10+.
+Requires Python 3.11+.
 
 ### Prebuilt archives
 

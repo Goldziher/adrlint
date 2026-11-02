@@ -16,7 +16,7 @@ x-ai-rulez:
 - Cargo (included with Rust)
 - mise (`mise --version`) for the toolchain and task automation
 - Node.js 24+ and pnpm 12+ only when verifying the npm wrapper
-- Python 3.10+ only when verifying the PyPI wrapper
+- Python 3.11+ only when verifying the PyPI wrapper
 
 ### Build
 
