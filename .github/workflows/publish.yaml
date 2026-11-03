@@ -187,11 +187,11 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
-      # ~keep No rust-toolchain.toml; release builds install the Rust 1.94 pinned here.
+      # ~keep No rust-toolchain.toml; release builds install the Rust 1.99 pinned here.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: "1.94"
+          toolchain: "1.99"
           components: clippy, rustfmt
 
       - name: Setup cache
@@ -266,11 +266,11 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
-      # ~keep No rust-toolchain.toml; release builds install the Rust 1.94 pinned here.
+      # ~keep No rust-toolchain.toml; release builds install the Rust 1.99 pinned here.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: "1.94"
+          toolchain: "1.99"
           targets: ${{ matrix.triple }}
 
       - name: Setup cache
@@ -325,11 +325,11 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
-      # ~keep No rust-toolchain.toml; release builds install the Rust 1.94 pinned here.
+      # ~keep No rust-toolchain.toml; release builds install the Rust 1.99 pinned here.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: "1.94"
+          toolchain: "1.99"
           targets: ${{ matrix.triple }}
 
       - name: Setup cache
@@ -404,12 +404,12 @@ jobs:
           chmod +x rustup-init
           export CARGO_HOME=/opt/cargo
           export RUSTUP_HOME=/opt/rustup
-          ./rustup-init -y --profile minimal --no-modify-path --default-toolchain 1.94
+          ./rustup-init -y --profile minimal --no-modify-path --default-toolchain 1.99
           rm -f rustup-init
           {
             echo "CARGO_HOME=/opt/cargo"
             echo "RUSTUP_HOME=/opt/rustup"
-            echo "RUSTUP_TOOLCHAIN=1.94"
+            echo "RUSTUP_TOOLCHAIN=1.99"
           } >> "$GITHUB_ENV"
           echo "/opt/cargo/bin" >> "$GITHUB_PATH"
 
@@ -467,11 +467,11 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
-      # ~keep No rust-toolchain.toml; release builds install the Rust 1.94 pinned here.
+      # ~keep No rust-toolchain.toml; release builds install the Rust 1.99 pinned here.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: "1.94"
+          toolchain: "1.99"
           targets: ${{ matrix.triple }}
 
       - name: Setup cache
@@ -675,11 +675,11 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
-      # ~keep No rust-toolchain.toml; release builds install the Rust 1.94 pinned here.
+      # ~keep No rust-toolchain.toml; release builds install the Rust 1.99 pinned here.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: "1.94"
+          toolchain: "1.99"
 
       - name: Authenticate to crates.io
         uses: rust-lang/crates-io-auth-action@v1

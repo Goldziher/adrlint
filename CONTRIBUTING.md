@@ -4,7 +4,7 @@
 
 ### Prerequisites
 
-- Rust 1.94+ with `cargo`
+- Rust 1.99+ with `cargo`
 - `mise` for the toolchain and tasks (`mise install`, then `mise run <task>`)
 - `poly` and `ai-rulez` 5.x for governance checks
 - Node.js 24+ and pnpm 12+ only for the npm wrapper

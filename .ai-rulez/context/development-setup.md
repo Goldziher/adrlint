@@ -12,7 +12,7 @@ x-ai-rulez:
 
 ### Prerequisites
 
-- Rust 1.94+ (`rustc --version`) — rumdl's current MSRV
+- Rust 1.99+ (`rustc --version`)
 - Cargo (included with Rust)
 - mise (`mise --version`) for the toolchain and task automation
 - Node.js 24+ and pnpm 12+ only when verifying the npm wrapper

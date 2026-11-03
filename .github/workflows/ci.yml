@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Keep in step with package.rust-version in Cargo.toml.
-      MSRV: "1.94"
+      MSRV: "1.99"
     steps:
       - uses: actions/checkout@v7
       # ~keep No rust-toolchain.toml; this job installs the MSRV toolchain it checks.

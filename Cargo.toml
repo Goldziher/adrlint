@@ -5,8 +5,7 @@ version = "0.4.1"
 authors = ["Na'aman Hirschfeld <nhirschfeld@gmail.com>"]
 description = "A fast, opinionated linter and formatter for MADR architecture decision records"
 edition = "2024"
-# rumdl 0.3 requires Rust 1.94; adrlint links it in rather than shelling out.
-rust-version = "1.94"
+rust-version = "1.99"
 categories = ["command-line-utilities", "development-tools"]
 keywords = ["adr", "architecture", "madr", "linter", "markdown"]
 license = "MIT"

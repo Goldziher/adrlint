@@ -82,7 +82,7 @@ adrlint is one self-contained binary. Every channel installs the same release bu
 ### Cargo
 
 ```bash
-cargo install adrlint          # compiles from crates.io; needs Rust 1.94+
+cargo install adrlint          # compiles from crates.io; needs Rust 1.99+
 cargo binstall adrlint         # downloads the release archive instead of compiling
 ```
 
@@ -162,7 +162,7 @@ cd adrlint
 cargo install --path .
 ```
 
-Requires Rust 1.94+ (the rumdl MSRV).
+Requires Rust 1.99+.
 
 </details>
 
