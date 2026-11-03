@@ -23,8 +23,15 @@
 //! ```
 //!
 //! The most common entry points are re-exported at the crate root.
+//!
+//! # Features
+//!
+//! `cli` (default) enables the command-line layer: `cli`, `report`, `template` and the `adrlint`
+//! binary, with their dependencies (clap, ignore, jiff, owo-colors, serde_json). Library consumers
+//! depend on adrlint with `default-features = false`; every other module stays available.
 
 pub mod adr;
+#[cfg(feature = "cli")]
 pub mod cli;
 pub mod config;
 pub mod diagnostics;
@@ -33,8 +40,10 @@ pub mod fix;
 pub mod lock;
 pub mod markdown;
 pub mod parallel;
+#[cfg(feature = "cli")]
 pub mod report;
 pub mod rules;
+#[cfg(feature = "cli")]
 pub mod template;
 
 pub use adr::{Document, parse as parse_adr};

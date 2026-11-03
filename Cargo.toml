@@ -24,30 +24,38 @@ path = "src/lib.rs"
 [[bin]]
 name = "adrlint"
 path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+# The command-line layer: `cli`, `report`, `template` and the binary, with the dependencies only they use.
+# Library consumers depend on adrlint with `default-features = false`.
+cli = ["dep:clap", "dep:ignore", "dep:jiff", "dep:owo-colors", "dep:serde_json"]
 
 [dependencies]
 anyhow = "1.0.104"
 blake3 = "1.8.7"
-clap = { version = "4.6.7", features = ["derive", "color", "wrap_help"] }
+clap = { version = "4.6.7", optional = true, features = ["derive", "color", "wrap_help"] }
 dirs = "7.0.0"
 glob = "0.3.4"
 # Discovery walks the project in parallel and honours .gitignore.
-ignore = "0.4"
-jiff = "0.2.38"
-owo-colors = "4.4.0"
+ignore = { version = "0.4", optional = true }
+jiff = { version = "0.2.38", optional = true }
+owo-colors = { version = "4.4.0", optional = true }
 # The Markdown parse is owned by `adr::parse`; no other module may parse the source.
 pulldown-cmark = { version = "0.13.6", default-features = false }
 # rumdl is linked in-process; its `native` feature pulls the LSP/tokio stack and is not needed.
 rumdl = { version = "0.3.2", default-features = false }
 saphyr = { version = "0.3.3", default-features = false }
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
+serde_json = { version = "1.0.154", optional = true }
 toml = "1.1.8"
 # MADR11 only: blocking, rustls with no OpenSSL and no async runtime.
 ureq = { version = "3.5.0", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
+serde_json = "1.0.154"
 # Applies the GitHub problem matcher's pattern to real `lint` output.
 regex = "1.13.1"
 tempfile = "3.27.0"
