@@ -9,12 +9,14 @@ use crate::discovery::{AdrFile, Directory};
 mod external;
 mod links;
 mod metadata;
+mod project;
 mod structure;
 mod style;
 
 pub use external::{Citation, REQUEST_TIMEOUT, check_external_links, external_citations};
 pub use links::{check_links, is_image, referenced_images};
 pub use metadata::check_metadata;
+pub use project::check_project;
 pub use structure::check_structure;
 pub use style::check_style;
 
@@ -131,7 +133,7 @@ pub fn check_document(document: &Document, path: &Path, root: &Path) -> Vec<Diag
     diagnostics
 }
 
-/// Runs every directory-level rule, with no image known to be referenced: every non-ADR file is
+/// Runs every directory-level rule over a scanned directory, with no image known to be referenced: every non-ADR file is
 /// `MADR42`. [`check_directory_with_images`] exempts the images the log's ADRs reference.
 pub fn check_directory(directory: &Directory, config: &AdrConfig) -> Vec<Diagnostic> {
     check_directory_with_images(directory, config, &BTreeSet::new())
@@ -213,7 +215,10 @@ fn check_gaps(directory: &Directory, diagnostics: &mut Vec<Diagnostic>) {
 
 fn check_foreign(directory: &Directory, referenced: &BTreeSet<PathBuf>, diagnostics: &mut Vec<Diagnostic>) {
     for path in &directory.foreign {
-        if is_image(path) && std::fs::canonicalize(path).is_ok_and(|canonical| referenced.contains(&canonical)) {
+        if !referenced.is_empty()
+            && is_image(path)
+            && std::fs::canonicalize(path).is_ok_and(|canonical| referenced.contains(&canonical))
+        {
             continue;
         }
         diagnostics.push(Diagnostic::error(

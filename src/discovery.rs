@@ -40,13 +40,21 @@ pub fn scan(dir: &Path) -> io::Result<Directory> {
         .collect::<io::Result<Vec<_>>>()?;
     entries.sort();
 
+    Ok(classify(
+        dir,
+        entries.into_iter().filter(|(_, is_dir)| !is_dir).map(|(path, _)| path),
+    ))
+}
+
+/// Sorts the files of one directory into ADR candidates, indexes and foreign files, by name alone.
+///
+/// This is the pure half of [`scan`]: it never touches the filesystem, so a caller that already
+/// holds the file list (an explicit file set, an in-memory tree) gets the same classification.
+pub fn classify(dir: &Path, paths: impl IntoIterator<Item = PathBuf>) -> Directory {
     let mut adrs = Vec::new();
     let mut foreign = Vec::new();
     let mut indexes = Vec::new();
-    for (path, is_dir) in entries {
-        if is_dir {
-            continue;
-        }
+    for path in paths {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             foreign.push(path);
             continue;
@@ -67,12 +75,12 @@ pub fn scan(dir: &Path) -> io::Result<Directory> {
         });
     }
 
-    Ok(Directory {
+    Directory {
         path: dir.to_path_buf(),
         adrs,
         foreign,
         indexes,
-    })
+    }
 }
 
 /// Whether a file name is a directory index, `README.md` or `index.md`, ignoring letter case in the

@@ -132,15 +132,17 @@ pub fn key(root: &Path, path: &Path) -> String {
 /// hand-written entry such as `/etc/passwd` cannot be used to probe for files outside it.
 pub fn load(path: &Path) -> Result<LockFile> {
     match fs::read_to_string(path) {
-        Ok(source) => {
-            let lock: LockFile =
-                toml::from_str(&source).with_context(|| format!("parsing the lock file at {}", path.display()))?;
-            validate_keys(&lock).with_context(|| format!("invalid lock file at {}", path.display()))?;
-            Ok(lock)
-        }
+        Ok(source) => parse_manifest(&source).with_context(|| format!("invalid lock file at {}", path.display())),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(LockFile::default()),
         Err(error) => Err(error).with_context(|| format!("reading the lock file at {}", path.display())),
     }
+}
+
+/// Parses the text of a lock file, validating its keys as [`load`] does. Reads nothing from disk.
+pub fn parse_manifest(source: &str) -> Result<LockFile> {
+    let lock: LockFile = toml::from_str(source).context("parsing the lock file")?;
+    validate_keys(&lock)?;
+    Ok(lock)
 }
 
 fn validate_keys(lock: &LockFile) -> Result<()> {
@@ -315,9 +317,17 @@ pub fn verify(document: &Document, entry: Option<&LockEntry>, path: &Path) -> Op
 ///
 /// `root` is the project root the manifest keys are relative to.
 pub fn missing_entries(lock: &LockFile, root: &Path) -> Vec<Diagnostic> {
+    missing_where(lock, |key| root.join(key).exists())
+}
+
+/// The `ADR51` findings for every locked path `present` rejects, in manifest order.
+///
+/// The filesystem-free form of [`missing_entries`]: `present` answers from whatever file set the
+/// caller holds.
+pub fn missing_where(lock: &LockFile, present: impl Fn(&str) -> bool) -> Vec<Diagnostic> {
     lock.adrs
         .iter()
-        .filter(|(key, _)| !root.join(key).exists())
+        .filter(|(key, _)| !present(key))
         .map(|(key, entry)| missing(Path::new(key), entry))
         .collect()
 }
