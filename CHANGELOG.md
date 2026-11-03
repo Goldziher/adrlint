@@ -4,10 +4,21 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## 0.5.0 - 2026-11-03
+
+### Added
+
+- A default `cli` Cargo feature gates the CLI-only dependencies (clap, ignore, jiff and the report
+  layer). Library consumers build with `default-features = false` and no longer compile them (#7).
+- `rules::check_project` runs the tree-wide `MADR41`-`MADR44` and `ADR50`/`ADR51` rules over an explicit
+  file set and lock, as a pure function that walks no directory and reads no file. Also public:
+  `lock::parse_manifest` and `discovery::classify`, which `discovery::scan` and `lock` now share (#8).
+
 ### Changed
 
 - Minimum supported versions raised: Rust 1.99.
 - Python 3.11 is now the minimum supported version; Python 3.10 reached end of life.
+- Dependencies upgraded to their latest releases.
 
 ## 0.4.1 - 2026-10-31
 
