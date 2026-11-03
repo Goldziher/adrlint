@@ -40,7 +40,7 @@ dirs = "7.0.0"
 glob = "0.3.4"
 # Discovery walks the project in parallel and honours .gitignore.
 ignore = { version = "0.4", optional = true }
-jiff = { version = "0.2.38", optional = true }
+jiff = { version = "0.2.39", optional = true }
 owo-colors = { version = "4.4.0", optional = true }
 # The Markdown parse is owned by `adr::parse`; no other module may parse the source.
 pulldown-cmark = { version = "0.13.6", default-features = false }
@@ -51,7 +51,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", optional = true }
 toml = "1.1.8"
 # MADR11 only: blocking, rustls with no OpenSSL and no async runtime.
-ureq = { version = "3.5.0", default-features = false, features = ["rustls"] }
+ureq = { version = "3.5.1", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
